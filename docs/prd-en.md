@@ -1,6 +1,8 @@
 # Agent-Based Integration System - Product Requirements Document
 
-**Status**: In Development (v0.1 - from discussion 2025-11-09)
+**Status**: ✅ Ready for Implementation (v1.0 - All blocking gaps resolved)
+**Version**: 1.0
+**Date**: 2025-11-09
 
 ---
 
@@ -102,13 +104,24 @@ salesforce_driver/
 - **Discovery mode**: Agent can call mini scripts to discover structure
   - `client.list_objects()` — what objects exist?
   - `client.get_fields(object_name)` — what fields does an object have?
-  - `client.get_relationships(object_name)` — how do objects relate?
 - **Documentation**: README + docs/ so agent knows how it works
 - **Examples**: examples/ with certified queries so agent has templates
 
+**Driver API Contract** (minimum required methods):
+
+| Method | Signature | Returns | Purpose |
+|--------|-----------|---------|---------|
+| `list_objects()` | `() -> List[str]` | List of object/table names | Discovery: what can be queried |
+| `get_fields(obj)` | `(str) -> Dict[str, Any]` | Field definitions (name, type, nullable) | Discovery: object structure |
+
+**Important notes**:
+- **No caching in driver** - Driver must be reliable; caching is agent's responsibility if needed
+- **Rate limiting** - Implementation-dependent; driver should handle it appropriately for the target system
+- **Error handling** - Driver should raise clear exceptions (ConnectionError, AuthError, ObjectNotFoundError, etc.)
+
 **Authentication**:
 - Business user puts credentials in `.env`
-- Driver reads them from `os.environ`
+- Driver reads them from `os.environ` at runtime
 - Agent knows from instructions that it expects them in `.env`
 
 ---
@@ -132,15 +145,83 @@ salesforce_driver/
 
 ### 4.3 Agent Orchestration
 
-**What the agent does**:
-1. Business user states their use case
-2. Agent reads library instructions/documentation
-3. Agent asks follow-up questions about requirements
-4. Agent runs mini discovery scripts when it needs info
-5. Agent writes complete integration script
-6. Agent shows it to business user and iterates
+**Agent Model**: Claude Sonnet 4.5
 
-**Open**: How does the agent "prepare" for work? Are instructions automatically injected? Manually? Does it read them from the repo?
+**Agent Role**: Integration builder - Expert at writing integration scripts between systems
+
+**How agent gets driver**:
+- Driver is available as **MCP server** or registered in driver registry
+- When user mentions a system (e.g., "Salesforce"), agent automatically looks up and loads the driver
+- MCP provides driver capabilities, documentation, and examples
+
+**Documentation Loading**: **Dynamic RAG**
+- Agent doesn't load all documentation at once (context window limits)
+- Agent retrieves only what it needs at each step
+- README → specific docs → examples → as needed
+
+**Agent Bootstrap Flow** (when user says "I want data from Salesforce"):
+
+1. **Load driver** - Agent finds `salesforce_driver` in MCP registry or driver registry
+2. **Read capabilities** - What methods does the driver provide? (`list_objects()`, `get_fields()`, etc.)
+3. **Read README** - What is Salesforce? How does it work? Key concepts
+4. **Read examples** - Look at certified queries for reference patterns
+5. **Ask user** - "What specifically do you need?" (clarify requirements)
+6. **Discovery** (if needed) - Run mini scripts to discover current state
+7. **Write script** - Generate integration code
+8. **Validate** - Run in e2b, get user approval
+9. **Iterate** - Fix errors, improve based on feedback
+
+**Timing**: **Proactive**
+- Agent loads driver immediately when user mentions the system name
+- Doesn't wait to understand full requirements before starting to learn about the system
+
+---
+
+### 4.4 Discovery Execution
+
+**How discovery works**:
+- Agent **writes mini Python scripts** to discover system structure
+- Scripts use the driver Client to call discovery methods
+- Example: `client = SalesforceClient(); print(client.get_fields('Lead'))`
+
+**Execution environment**:
+- Discovery scripts run in **e2b** (isolated Python sandbox)
+- Scripts use **user credentials** from `.env` (loaded in e2b environment)
+- No other permissions - scripts cannot modify data
+
+**Output format**:
+- Results returned as **Python dict/list** structures
+- Agent receives structured data back into context
+- Example return: `{'Name': {'type': 'string', 'nullable': False}, 'Email': {'type': 'string', 'nullable': True}, ...}`
+
+**Error handling**:
+- If discovery fails (timeout, API down, auth error), agent **fails gracefully**
+- Agent informs user what happened: "I couldn't connect to Salesforce. Could you check your credentials?"
+- Agent may suggest alternatives: "Would you like to proceed based on standard Salesforce schema instead?"
+- Agent does not automatically retry - asks user for guidance
+
+**Permissions**:
+- Discovery scripts have **read-only access** to target system
+- Cannot write, update, or delete data
+- Scoped by user credentials (whatever permissions the user's API key has)
+
+---
+
+### 4.5 Testing & Validation
+
+**How agent validates generated scripts**:
+
+1. **Run in e2b** - Agent executes the script in isolated environment
+2. **User approval** - Agent shows output to user, asks "Does this look right?"
+
+**When script fails**:
+- **Agent fixes it** - Agent sees the error, analyzes what went wrong, and rewrites the script
+- Iterates until it works or asks user for clarification
+
+**Approval workflow**:
+- **First run requires approval** - User must review and approve the first successful execution
+- **After first success** - Script can run automatically (user has validated it works correctly)
+- **For write operations** - Always requires explicit approval, never automatic
 
 ---
 
@@ -172,19 +253,39 @@ Output: Script that uses salesforce_driver + hubspot_driver, syncs data
 
 ## 6. Architecture
 
-### Modular per system
+### 6.1 Modular per system
 - Each external system has its own driver (`salesforce_driver/`, `hubspot_driver/`, ...)
 - Agent picks the right one based on user request
 - Later, drivers can be consolidated into a more universal system
 
-### Execution Environment
+### 6.2 Execution Environment
 - Scripts run in **e2b** (isolated Python environment)
 - Business user takes the final script and can deploy it wherever they want
 
-### Credentials Management
-- Business user puts credentials in `.env`
-- Script reads them at runtime
-- Agent knows from instructions that this is how it works
+### 6.3 Security & Governance
+
+**Access Permissions**:
+- Agent has **read-only access** during discovery (cannot write, update, delete)
+- Agent can generate scripts that **write** if user approves
+- Agent **never deletes** data (no delete operations allowed)
+- Permissions are **scoped by user credentials** (agent has same access as user's API key)
+
+**Audit Trail** (for compliance/debugging):
+- **All user prompts** - Log every user request
+- **Discovery calls** - What was discovered, which API calls were made
+- **User approvals** - When user approved/rejected scripts
+
+**Credentials Management**:
+- User credentials stored in `.env` file
+- Credentials only exist in **e2b environment** at runtime
+- **Agent never sees credentials** - they're loaded by e2b, not passed through agent context
+- No credentials in logs, no credentials in generated scripts (use environment variables)
+
+**Safety guardrails**:
+- No destructive operations without explicit user approval
+- Scripts that modify data must be approved before first run
+- Clear error messages when something goes wrong
+- Agent explains what each script does before execution
 
 ---
 
@@ -202,193 +303,107 @@ Output: Script that uses salesforce_driver + hubspot_driver, syncs data
 
 ---
 
-## 8. Complete Checklist of Topics
+## 8. Implementation Status
 
-Here's everything we discussed or mentioned — what's covered, what's open.
+All **critical blocking gaps** from Codex review (Section 5 in @docs/prd-codex-review-en.md) have been resolved:
 
-### 8.1 CLEARLY COVERED ✅
+### 8.1 RESOLVED ✅
 
-#### Architecture & Design
-- [x] Modular approach (driver per system)
-- [x] Python package for import
-- [x] Entry point (`main.py`)
-- [x] Repo structure (draft): examples/, docs/, src/
-- [x] Separation: Driver library vs. agent instructions
-- [x] Execution environment: e2b
+#### 1. Agent Orchestration & Prompting
+- [x] Model: Claude Sonnet 4.5
+- [x] Role: Integration builder
+- [x] Driver loading: MCP server or driver registry
+- [x] Documentation: Dynamic RAG (loads what's needed)
+- [x] Bootstrap flow: capabilities → README → examples → ask user → discovery → write → validate
+- [x] Timing: Proactive (loads driver immediately)
 
-#### Driver Capabilities
-- [x] Client class API
-- [x] Discovery methods: `list_objects()`, `get_fields()`, `get_relationships()`
-- [x] Metadata/schema endpoints
-- [x] Runtime discovery (dynamic, not static)
+#### 2. Discovery Execution Path
+- [x] Execution: Agent writes mini Python scripts
+- [x] Environment: e2b isolated sandbox
+- [x] Credentials: User's `.env` loaded in e2b
+- [x] Output format: Python dict/list structures
+- [x] Error handling: Fail gracefully, inform user
+- [x] Permissions: Read-only during discovery
 
-#### Agent Workflow
-- [x] Business user → Agent dialog
-- [x] Agent asks about requirements
-- [x] Just-in-time discovery (agent runs mini scripts when needed)
-- [x] Agent writes script
-- [x] Iterative process (agent ↔ user)
-- [x] Output: Production-ready Python script
+#### 3. Error Handling & Validation
+- [x] Validation: Run in e2b + user approval
+- [x] Script failure: Agent fixes and retries
+- [x] Approval workflow: First run requires approval, then automatic
+- [x] Write operations: Always require explicit approval
 
-#### Instructions & Documentation
-- [x] README.md in library
-- [x] docs/ folder with details
-- [x] Examples/certified queries
-- [x] Senior→junior onboarding mentality
+#### 4. Governance & Security
+- [x] Permissions: Read-only + write (if approved) + no delete + scoped by user
+- [x] Audit trail: All prompts, discovery calls, user approvals
+- [x] Credentials: E2B env only (agent never sees them)
+- [x] Safety: No destructive ops without approval
 
-#### Credentials & Auth
-- [x] Business user puts in `.env`
-- [x] Driver reads from `os.environ`
-- [x] Agent knows this is how it works
-
-#### Use Cases
-- [x] Data sync (Lead→Campaign)
-- [x] Analysis (which campaign leads to deals)
-- [x] Multi-system integration
+#### 5. Driver API Contract
+- [x] Minimum methods: `list_objects()`, `get_fields(obj)`
+- [x] No caching in driver (agent handles caching if needed)
+- [x] Rate limiting: Implementation-dependent
+- [x] Error handling: Clear exceptions (ConnectionError, AuthError, etc.)
 
 ---
 
-### 8.2 COVERED, BUT COULD BE MORE SPECIFIC ⚠️
+### 8.2 DEFERRED (Nice-to-have, not blocking) 📋
 
-#### Discovery Mechanism
-- [x] Principle: just-in-time discovery
-- [ ] Specifically: What does a mini script that the agent runs look like?
-- [ ] Specifically: How do discovery results get back into agent context?
-- [ ] Specifically: When does discovery run (everything? only what's needed)?
+These can be addressed during implementation/iteration:
 
-#### Agent Getting Instructions
-- [x] Instructions are in library README + docs
-- [ ] **SPECIFICALLY SOMEHOW**: How does agent get instructions? Injected? Reads files? Passed as prompt?
-- [ ] How long can instructions be (context window limit)?
-- [ ] Priority — what must agent read vs. what can it ignore?
-
-#### README Navigation
-- [x] Mentioned Claude Skills model
-- [ ] **SPECIFICALLY**: What should README look like so agent knows what to do next?
-- [ ] Structure: what in README vs. what in docs/?
-
-#### Iterative Improvement
-- [x] Mentioned: "author will hit problems and add to instructions"
-- [ ] **SPECIFICALLY**: How does feedback from agent get back to author?
-- [ ] How do instructions get updated?
-
-#### Scheduling & Long-Running Tasks
-- [x] Mentioned in example (APScheduler)
-- [ ] How should scheduling be handled? Part of driver? Or agent?
-
-#### Webhook Support
-- [x] Mentioned: "trigger action if they supported webhooks"
-- [ ] How should webhooks be integrated?
-
-#### Rate Limiting & API Throttling
-- [x] Mentioned in instructions
-- [ ] How is it specifically handled? In driver? Retry logic?
-- [ ] What's the default behavior?
-
----
-
-### 8.3 OPEN QUESTIONS / NOT ADDRESSED ❌
-
-#### Agent Orchestration & Prompting
-- [ ] What is the exact system prompt for the agent?
-- [ ] How are instructions communicated to agent? (Injected context? File-based? API call?)
-- [ ] How long is onboarding between agent and library?
-- [ ] What model is used? (Claude Opus? Sonnet?)
-- [ ] How does agent "prepare" for a new driver?
-
-#### Error Handling & Resilience
-- [ ] What if discovery fails? (API down, auth failed, schema changed)
-- [ ] What if agent writes a bad script?
-- [ ] What if script fails during execution?
-- [ ] Retry logic — should it be in driver?
-- [ ] Fallback strategy?
-
-#### Testing & Validation
-- [ ] How is it validated that generated script is correct?
-- [ ] Dry-run mode?
-- [ ] Unit tests for generated scripts?
-- [ ] Integration tests with real system?
-- [ ] How does agent verify script works?
-
-#### Governance, Safety & Auditing
-- [ ] How do you know what agent did? (logs, audit trail)
-- [ ] Approval loop — who approves script before it runs?
-- [ ] Security: What if agent writes script that would delete all data?
-- [ ] Permissions scoping — should agent have limited access?
-- [ ] Compliance — how is GDPR/auditing handled?
-- [ ] Secrets management — are credentials securely handled?
-
-#### Learning & Optimization
-- [ ] How does system learn from previous customizations?
-- [ ] Caching? (so same data isn't pulled repeatedly)
-- [ ] How do instructions improve based on learnings?
-- [ ] How are instructions updated from failure feedback?
-
-#### Multi-System Integration
-- [ ] How does agent use 2+ drivers?
-- [ ] How are different auth methods handled?
-- [ ] How is sync decided (realtime? batch? event-based)?
-- [ ] How are conflicts managed during sync?
-
-#### Driver Architecture Details
-- [ ] Exact API Client class (what methods, what parameters)
-- [ ] Models/DTOs — how are objects from remote systems represented?
-- [ ] Session management — how long does connection stay alive?
-- [ ] Connection pooling?
-- [ ] Caching layer in driver?
-- [ ] Rate limiting handling — built-in, or agent handles it?
-
-#### Certified Queries / Examples
-- [ ] How are "certified queries" defined?
-- [ ] Who writes them? (framework author? domain expert?)
-- [ ] How long can they be? (to fit in agent's context)
-- [ ] How are they structured? (by complexity? by use case?)
-- [ ] How does agent choose the right example?
-
-#### Documentation Strategy
-- [ ] How is README structured for agent?
-- [ ] What must be in README vs. docs/ vs. examples/?
-- [ ] What's the preferred format? (Markdown? Structured? Code comments?)
-- [ ] How detailed should documentation be? (API reference? Tutorials?)
-
-#### MCP Relationship
-- [ ] What is the relationship to Model Context Protocol (MCP)?
-- [ ] Do we use MCP as base? Complementary? Separate?
-- [ ] How is this different from Salesforce MCP server?
-- [ ] Should we build on MCP instead of our own solution?
-
-#### Operational Model
-- [ ] Where do generated scripts run in production?
-- [ ] How are they monitored? (logs, errors, success)
-- [ ] How are they deployed? (containerized? Scheduled job?)
-- [ ] Rollback strategy?
-- [ ] Driver upgrade — how does it propagate to running scripts?
-
-#### Metrics & Success
-- [ ] What are success metrics? (integration time? accuracy? uptime?)
-- [ ] How is quality of generated scripts measured?
-- [ ] How is cost measured?
-
-#### Deployment & Distribution
-- [ ] How are drivers distributed? (PyPI? Internal repo? Git submodule?)
-- [ ] Versioning strategy?
-- [ ] Backward compatibility?
-
-#### Certified Queries Caching
-- [ ] Can scripts be cached for future use?
-- [ ] How is it detected that we can reuse?
-- [ ] How are they parameterized (user inputs)?
+- **Learning & Optimization**: How system learns from previous runs, caching strategies
+- **Multi-System Integration**: Handling 2+ drivers simultaneously, conflict resolution
+- **MCP Relationship**: Exact integration with Model Context Protocol
+- **Operational Model**: Production deployment, monitoring, rollback strategies
+- **Metrics & Success**: KPIs, quality measurement
+- **Distribution**: PyPI vs internal repo, versioning
+- **Advanced features**: Webhooks, scheduling, long-running tasks
 
 ---
 
 ## 9. Next Steps
 
-1. **Prototype one driver** (Salesforce) — try out the structure
-2. **Experiment with agent orchestration** — how to pass instructions to agent
-3. **Test with business user** — does it work as intended?
-4. **Iterate** based on learnings
+Now that all blocking gaps are resolved, we can proceed with implementation:
+
+### Phase 1: First Driver Prototype (1-2 weeks)
+
+1. **Build Salesforce driver** (`salesforce_driver/`)
+   - Implement `Client` class with `list_objects()` and `get_fields()`
+   - Write README with system overview and best practices
+   - Create 2-3 example scripts (list leads, sync with DB)
+   - Set up as MCP server or register in driver registry
+
+2. **Set up e2b environment**
+   - Configure isolated Python sandbox
+   - Test credential loading from `.env`
+   - Verify discovery scripts can run
+
+3. **Test agent integration**
+   - Agent loads driver from MCP/registry
+   - Agent can run discovery scripts
+   - Agent generates simple integration script
+   - Agent validates script in e2b
+
+### Phase 2: End-to-End Testing (1 week)
+
+4. **Test with real business user**
+   - Use case: "Sync leads from Salesforce to CSV"
+   - Capture full dialog, discovery, script generation
+   - Validate approval workflow works
+   - Document pain points and improvements
+
+5. **Iterate based on feedback**
+   - Improve README/documentation based on agent behavior
+   - Refine error messages and failure modes
+   - Optimize RAG retrieval if needed
+
+### Phase 3: Second Driver (1-2 weeks)
+
+6. **Build second driver** (PostgreSQL or HubSpot)
+   - Validate that driver contract is general enough
+   - Test multi-system integration (Salesforce → PostgreSQL)
+   - Refine architecture based on learnings
 
 ---
 
-**Last update**: 2025-11-09 (from discussion)
-**Authors**: Discussion padak + Codex second opinion
+**Last update**: 2025-11-09 (Codex review gaps resolved)
+**Status**: Ready for implementation
+**Authors**: Discussion padak + Codex review + Gap resolution
