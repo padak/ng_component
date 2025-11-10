@@ -1,0 +1,18 @@
+# E2B Integration
+e2b-code-interpreter>=0.0.8
+
+# Mock API Server
+fastapi>=0.104.0
+uvicorn>=0.24.0
+pydantic>=2.5.0
+
+# Database
+duckdb>=0.9.0
+
+# Driver dependencies
+requests>=2.31.0
+python-dotenv>=1.0.0
+
+# Development
+pytest>=7.4.0
+pytest-asyncio>=0.21.0

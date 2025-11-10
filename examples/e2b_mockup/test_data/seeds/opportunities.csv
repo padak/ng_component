@@ -1,0 +1,41 @@
+Id,Name,Amount,StageName,LeadId,CloseDate,CreatedDate
+OPP001,TechVentures Enterprise Platform,285000.00,Closed Won,LED001,2024-10-15,2024-08-20 10:00:00
+OPP002,HealthFirst Integration Project,125000.00,Negotiation,LED002,2024-11-30,2024-08-25 11:30:00
+OPP003,Global Finance Analytics Suite,450000.00,Proposal,LED003,2024-12-15,2024-09-01 14:00:00
+OPP004,CloudScale Migration Services,310000.00,Closed Won,LED006,2024-10-20,2024-09-15 09:45:00
+OPP005,Investment Dynamics Platform,380000.00,Qualification,LED008,2024-12-01,2024-09-20 16:15:00
+OPP006,DataDriven AI Implementation,95000.00,Prospecting,LED011,2025-01-15,2024-09-28 13:00:00
+OPP007,Capital Growth CRM System,210000.00,Negotiation,LED013,2024-11-25,2024-10-05 10:30:00
+OPP008,SoftwareSolutions Pro License,75000.00,Closed Won,LED016,2024-11-01,2024-10-10 15:00:00
+OPP009,Banking Systems Security Upgrade,495000.00,Proposal,LED018,2024-12-20,2024-10-15 11:45:00
+OPP010,AI Innovations ML Platform,145000.00,Qualification,LED021,2025-01-10,2024-10-22 14:30:00
+OPP011,FinTech Solutions Integration,265000.00,Negotiation,LED023,2024-11-28,2024-10-25 09:15:00
+OPP012,Robotics Manufacturing Suite,340000.00,Prospecting,LED025,2025-01-20,2024-10-29 16:00:00
+OPP013,TechVentures Cloud Services,88000.00,Qualification,LED026,2024-12-10,2024-11-01 12:30:00
+OPP014,Advanced Manufacturing ERP,425000.00,Proposal,LED030,2024-12-18,2024-11-05 10:00:00
+OPP015,CloudScale Data Warehouse,198000.00,Closed Won,LED031,2024-10-28,2024-11-08 15:30:00
+OPP016,Investment Dynamics Trading System,510000.00,Negotiation,LED033,2024-12-05,2024-11-10 11:00:00
+OPP017,SoftwareSolutions Enterprise Deal,156000.00,Prospecting,LED041,2025-02-01,2024-09-08 14:15:00
+OPP018,Banking Systems API Platform,275000.00,Qualification,LED043,2024-12-22,2024-09-19 10:45:00
+OPP019,AI Innovations Data Pipeline,118000.00,Proposal,LED047,2025-01-05,2024-10-09 16:30:00
+OPP020,FinTech Solutions Compliance,182000.00,Closed Won,LED048,2024-11-05,2024-10-14 13:15:00
+OPP021,Robotics Manufacturing Automation,385000.00,Negotiation,LED050,2024-12-30,2024-10-23 09:00:00
+OPP022,Global Finance Risk Management,295000.00,Prospecting,LED053,2025-01-25,2024-10-30 15:45:00
+OPP023,Investment Dynamics Analytics,225000.00,Qualification,LED058,2024-12-12,2024-11-07 12:00:00
+OPP024,DataDriven Enterprise Platform,165000.00,Closed Lost,LED061,2024-10-01,2024-08-21 10:30:00
+OPP025,Capital Growth Reporting Suite,135000.00,Proposal,LED063,2024-11-22,2024-09-01 14:45:00
+OPP026,Industrial Automation Controls,298000.00,Negotiation,LED065,2024-12-08,2024-09-12 11:15:00
+OPP027,SoftwareSolutions Pro Services,92000.00,Closed Won,LED066,2024-10-25,2024-09-18 16:00:00
+OPP028,Banking Systems Modernization,415000.00,Prospecting,LED068,2025-02-10,2024-09-26 13:30:00
+OPP029,Capital Growth Integration,188000.00,Qualification,LED073,2024-12-15,2024-10-19 09:45:00
+OPP030,Robotics Manufacturing Vision,255000.00,Proposal,LED075,2025-01-12,2024-10-24 15:15:00
+OPP031,TechVentures Security Platform,172000.00,Closed Lost,LED076,2024-11-01,2024-10-27 12:30:00
+OPP032,Advanced Manufacturing IoT,335000.00,Negotiation,LED080,2024-12-28,2024-11-02 10:00:00
+OPP033,Investment Dynamics Portfolio,445000.00,Prospecting,LED083,2025-01-30,2024-11-06 16:15:00
+OPP034,DataDriven Analytics Pro,125000.00,Qualification,LED086,2025-01-18,2024-11-09 14:00:00
+OPP035,Industrial Automation MES,365000.00,Proposal,LED090,2024-12-20,2024-08-28 11:30:00
+OPP036,Banking Systems Core Update,485000.00,Closed Won,LED093,2024-11-12,2024-09-14 09:15:00
+OPP037,Luxury Retail POS System,215000.00,Negotiation,LED094,2024-12-02,2024-09-21 15:45:00
+OPP038,Smart Manufacturing Analytics,158000.00,Prospecting,LED096,2025-01-22,2024-10-05 13:00:00
+OPP039,AI Innovations Deep Learning,195000.00,Qualification,LED097,2024-12-25,2024-10-12 10:30:00
+OPP040,FinTech Solutions Mobile,142000.00,Closed Lost,LED098,2024-11-08,2024-10-17 16:45:00

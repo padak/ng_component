@@ -1,0 +1,280 @@
+openapi: 3.0.3
+info:
+  title: Salesforce REST API Mock
+  description: |
+    Mock implementation of Salesforce REST API backed by DuckDB.
+    Provides basic endpoints for querying and describing Salesforce objects.
+  version: 1.0.0
+  contact:
+    name: API Support
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+
+paths:
+  /sobjects:
+    get:
+      summary: List all available SObjects
+      description: Returns a list of all Salesforce objects available in the database
+      operationId: listSObjects
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SObjectsResponse'
+
+  /sobjects/{sobject}/describe:
+    get:
+      summary: Describe an SObject
+      description: Get detailed metadata and field schema for a specific Salesforce object
+      operationId: describeSObject
+      parameters:
+        - name: sobject
+          in: path
+          required: true
+          description: Name of the SObject (e.g., Lead, Opportunity)
+          schema:
+            type: string
+            example: Lead
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SObjectMetadata'
+        '404':
+          description: SObject not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /query:
+    get:
+      summary: Execute a SOQL query
+      description: |
+        Execute a simplified SOQL query against the database.
+        Supports basic SELECT, WHERE, ORDER BY, and LIMIT clauses.
+      operationId: executeQuery
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: SOQL query string
+          schema:
+            type: string
+          examples:
+            simple:
+              value: SELECT * FROM Lead
+              summary: Select all fields
+            filtered:
+              value: SELECT Id, Name FROM Lead WHERE Status='Open'
+              summary: Select specific fields with filter
+            dateFilter:
+              value: SELECT * FROM Lead WHERE CreatedDate > '2024-01-01'
+              summary: Filter by date
+      responses:
+        '200':
+          description: Successful query execution
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryResult'
+        '400':
+          description: Invalid query syntax
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /sobjects/{sobject}:
+    post:
+      summary: Create a new record
+      description: Create a new record in the specified SObject (mock implementation)
+      operationId: createRecord
+      parameters:
+        - name: sobject
+          in: path
+          required: true
+          description: Name of the SObject
+          schema:
+            type: string
+            example: Lead
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+            example:
+              FirstName: John
+              LastName: Doe
+              Company: Acme Corp
+              Status: Open
+      responses:
+        '201':
+          description: Record created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateRecordResponse'
+        '404':
+          description: SObject not found
+
+  /health:
+    get:
+      summary: Health check
+      description: Check if the API and database connection are healthy
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  database:
+                    type: string
+                  tables_count:
+                    type: integer
+
+components:
+  schemas:
+    SObjectBasic:
+      type: object
+      properties:
+        name:
+          type: string
+          example: Lead
+        label:
+          type: string
+          example: Lead
+        labelPlural:
+          type: string
+          example: Leads
+        custom:
+          type: boolean
+          example: false
+        keyPrefix:
+          type: string
+          example: "00Q"
+
+    SObjectsResponse:
+      type: object
+      properties:
+        encoding:
+          type: string
+          example: UTF-8
+        maxBatchSize:
+          type: integer
+          example: 200
+        sobjects:
+          type: array
+          items:
+            $ref: '#/components/schemas/SObjectBasic'
+
+    FieldDefinition:
+      type: object
+      properties:
+        name:
+          type: string
+          example: FirstName
+        type:
+          type: string
+          example: string
+        label:
+          type: string
+          example: First Name
+        length:
+          type: integer
+          nullable: true
+          example: 255
+        nullable:
+          type: boolean
+          example: true
+        createable:
+          type: boolean
+          example: true
+        updateable:
+          type: boolean
+          example: true
+
+    SObjectMetadata:
+      type: object
+      properties:
+        name:
+          type: string
+          example: Lead
+        label:
+          type: string
+          example: Lead
+        labelPlural:
+          type: string
+          example: Leads
+        custom:
+          type: boolean
+          example: false
+        createable:
+          type: boolean
+          example: true
+        updateable:
+          type: boolean
+          example: true
+        deletable:
+          type: boolean
+          example: true
+        queryable:
+          type: boolean
+          example: true
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldDefinition'
+
+    QueryResult:
+      type: object
+      properties:
+        totalSize:
+          type: integer
+          example: 42
+        done:
+          type: boolean
+          example: true
+        records:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    CreateRecordResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          example: 00Q5e00000D8dZzEAJ
+        success:
+          type: boolean
+          example: true
+        errors:
+          type: array
+          items:
+            type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: SObject 'Unknown' not found
+        errorCode:
+          type: string
+          example: NOT_FOUND

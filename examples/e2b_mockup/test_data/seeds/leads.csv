@@ -1,0 +1,101 @@
+Id,FirstName,LastName,Email,Company,Status,Source,CreatedDate,CampaignId
+LED001,Sarah,Johnson,sarah.johnson@techventures.com,TechVentures Inc,Qualified,Web,2024-08-15 09:30:00,CMP001
+LED002,Michael,Chen,m.chen@healthfirst.com,HealthFirst Solutions,Working,Referral,2024-08-20 14:15:00,CMP002
+LED003,Emily,Rodriguez,emily.r@globalfinance.com,Global Finance Corp,Qualified,Conference,2024-08-25 11:45:00,CMP003
+LED004,James,Williams,jwilliams@retailmax.com,RetailMax Chain,New,Web,2024-09-01 10:00:00,CMP005
+LED005,Lisa,Anderson,l.anderson@advmfg.com,Advanced Manufacturing LLC,Working,Partner,2024-09-05 16:20:00,CMP004
+LED006,David,Martinez,david.m@cloudscale.io,CloudScale Systems,Qualified,Webinar,2024-09-10 13:30:00,CMP002
+LED007,Jennifer,Taylor,j.taylor@medicare.com,MediCare Partners,Unqualified,Web,2024-09-12 09:15:00,CMP001
+LED008,Robert,Thomas,rthomas@invdynamics.com,Investment Dynamics,Qualified,Conference,2024-09-15 15:45:00,CMP003
+LED009,Amanda,Garcia,amanda.g@fashionforward.com,Fashion Forward Retail,New,Web,2024-09-18 11:00:00,CMP005
+LED010,Christopher,Lee,c.lee@precisioneng.com,Precision Engineering Co,Working,Partner,2024-09-20 14:30:00,CMP004
+LED011,Michelle,White,michelle.w@datadriven.ai,DataDriven Analytics,Qualified,Webinar,2024-09-22 10:45:00,CMP006
+LED012,Daniel,Harris,d.harris@regionalhospital.org,Regional Hospital Network,Working,Referral,2024-09-25 16:00:00,CMP002
+LED013,Jessica,Martin,jessica.m@capitalgrowth.com,Capital Growth Partners,Qualified,Conference,2024-09-28 12:15:00,CMP007
+LED014,Matthew,Thompson,mthompson@ecommerce-innovations.com,E-Commerce Innovations,New,Web,2024-10-01 09:00:00,CMP005
+LED015,Ashley,Jackson,ashley.j@industrial-auto.com,Industrial Automation Inc,Working,Partner,2024-10-03 15:30:00,CMP008
+LED016,Joshua,Moore,j.moore@softwarepro.com,SoftwareSolutions Pro,Qualified,Webinar,2024-10-05 11:45:00,CMP009
+LED017,Nicole,Brown,nicole.b@pharmaventures.com,Pharmaceutical Ventures,Unqualified,Web,2024-10-08 14:00:00,CMP005
+LED018,Andrew,Davis,a.davis@bankingsystems.com,Banking Systems Ltd,Qualified,Conference,2024-10-10 10:30:00,CMP007
+LED019,Stephanie,Wilson,stephanie.w@luxuryretail.com,Luxury Retail Group,Working,Referral,2024-10-12 16:45:00,CMP012
+LED020,Ryan,Miller,r.miller@smartmfgtech.com,Smart Manufacturing Tech,New,Partner,2024-10-15 13:00:00,CMP008
+LED021,Rachel,Moore,rachel.m@ailab.io,AI Innovations Lab,Qualified,Webinar,2024-10-17 09:30:00,CMP009
+LED022,Kevin,Taylor,k.taylor@wellnesscenters.com,Wellness Centers Network,Working,Web,2024-10-19 15:15:00,CMP010
+LED023,Lauren,Anderson,lauren.a@fintechsol.com,FinTech Solutions,Qualified,Conference,2024-10-20 11:00:00,CMP007
+LED024,Brandon,Thomas,b.thomas@outdoorsports.com,Outdoor Sports Retail,New,Web,2024-10-22 14:45:00,CMP010
+LED025,Melissa,Jackson,melissa.j@roboticsmfg.com,Robotics Manufacturing,Working,Partner,2024-10-24 10:15:00,CMP008
+LED026,Justin,White,justin.w@techventures.com,TechVentures Inc,Qualified,Referral,2024-10-26 16:30:00,CMP012
+LED027,Amber,Harris,amber.h@healthfirst.com,HealthFirst Solutions,Unqualified,Web,2024-10-28 12:45:00,CMP005
+LED028,Eric,Martin,e.martin@globalfinance.com,Global Finance Corp,Working,Webinar,2024-10-29 09:00:00,CMP009
+LED029,Brittany,Garcia,brittany.g@retailmax.com,RetailMax Chain,New,Web,2024-10-30 15:00:00,CMP010
+LED030,Tyler,Rodriguez,t.rodriguez@advmfg.com,Advanced Manufacturing LLC,Qualified,Partner,2024-11-01 11:30:00,CMP004
+LED031,Samantha,Lee,samantha.l@cloudscale.io,CloudScale Systems,Working,Conference,2024-11-02 14:15:00,CMP007
+LED032,Nathan,Wilson,n.wilson@medicare.com,MediCare Partners,New,Web,2024-11-03 10:00:00,CMP014
+LED033,Kayla,Brown,kayla.b@invdynamics.com,Investment Dynamics,Qualified,Referral,2024-11-04 16:45:00,CMP012
+LED034,Jordan,Davis,jordan.d@fashionforward.com,Fashion Forward Retail,Working,Webinar,2024-11-05 13:30:00,CMP009
+LED035,Taylor,Miller,taylor.m@precisioneng.com,Precision Engineering Co,Unqualified,Web,2024-11-06 09:15:00,CMP014
+LED036,Morgan,Moore,morgan.m@datadriven.ai,DataDriven Analytics,New,Partner,2024-11-07 15:45:00,CMP008
+LED037,Alex,Thompson,alex.t@regionalhospital.org,Regional Hospital Network,Working,Web,2024-11-08 12:00:00,CMP014
+LED038,Jordan,Martinez,jordan.m@capitalgrowth.com,Capital Growth Partners,Qualified,Conference,2024-08-18 10:30:00,CMP003
+LED039,Casey,Johnson,casey.j@ecommerce-innovations.com,E-Commerce Innovations,Working,Referral,2024-08-22 14:45:00,CMP001
+LED040,Cameron,Chen,cameron.c@industrial-auto.com,Industrial Automation Inc,New,Partner,2024-08-28 11:15:00,CMP004
+LED041,Blake,Williams,blake.w@softwarepro.com,SoftwareSolutions Pro,Qualified,Web,2024-09-03 16:00:00,CMP005
+LED042,Riley,Anderson,riley.a@pharmaventures.com,Pharmaceutical Ventures,Working,Webinar,2024-09-08 13:45:00,CMP006
+LED043,Avery,Taylor,avery.t@bankingsystems.com,Banking Systems Ltd,Qualified,Conference,2024-09-14 10:00:00,CMP003
+LED044,Peyton,Garcia,peyton.g@luxuryretail.com,Luxury Retail Group,Unqualified,Web,2024-09-19 15:30:00,CMP005
+LED045,Quinn,Lee,quinn.l@smartmfgtech.com,Smart Manufacturing Tech,New,Referral,2024-09-24 12:15:00,CMP012
+LED046,Skylar,White,skylar.w@ailab.io,AI Innovations Lab,Working,Partner,2024-09-29 09:45:00,CMP008
+LED047,Dakota,Harris,dakota.h@wellnesscenters.com,Wellness Centers Network,Qualified,Webinar,2024-10-04 14:00:00,CMP009
+LED048,Phoenix,Martin,phoenix.m@fintechsol.com,FinTech Solutions,Working,Web,2024-10-09 11:30:00,CMP010
+LED049,River,Thomas,river.t@outdoorsports.com,Outdoor Sports Retail,New,Conference,2024-10-13 16:15:00,CMP007
+LED050,Sage,Jackson,sage.j@roboticsmfg.com,Robotics Manufacturing,Qualified,Partner,2024-10-18 13:00:00,CMP004
+LED051,Charlie,Wilson,charlie.w@techventures.com,TechVentures Inc,Working,Web,2024-10-21 09:30:00,CMP014
+LED052,Drew,Brown,drew.b@healthfirst.com,HealthFirst Solutions,New,Referral,2024-10-23 15:45:00,CMP012
+LED053,Reese,Davis,reese.d@globalfinance.com,Global Finance Corp,Qualified,Webinar,2024-10-25 12:30:00,CMP009
+LED054,Hayden,Miller,hayden.m@retailmax.com,RetailMax Chain,Working,Web,2024-10-27 10:15:00,CMP010
+LED055,Rowan,Moore,rowan.m@advmfg.com,Advanced Manufacturing LLC,Unqualified,Partner,2024-10-29 16:00:00,CMP008
+LED056,Finley,Thompson,finley.t@cloudscale.io,CloudScale Systems,New,Conference,2024-10-31 14:30:00,CMP007
+LED057,Emerson,Martinez,emerson.m@medicare.com,MediCare Partners,Working,Web,2024-11-01 11:00:00,CMP014
+LED058,Parker,Rodriguez,parker.r@invdynamics.com,Investment Dynamics,Qualified,Referral,2024-11-02 15:15:00,CMP012
+LED059,Sawyer,Lee,sawyer.l@fashionforward.com,Fashion Forward Retail,New,Webinar,2024-11-03 12:45:00,CMP009
+LED060,Remy,Garcia,remy.g@precisioneng.com,Precision Engineering Co,Working,Partner,2024-11-04 09:00:00,CMP004
+LED061,Marley,Anderson,marley.a@datadriven.ai,DataDriven Analytics,Qualified,Web,2024-08-16 10:45:00,CMP001
+LED062,London,Taylor,london.t@regionalhospital.org,Regional Hospital Network,Unqualified,Conference,2024-08-21 14:00:00,CMP003
+LED063,Elliot,White,elliot.w@capitalgrowth.com,Capital Growth Partners,Working,Referral,2024-08-26 11:30:00,CMP012
+LED064,Reagan,Harris,reagan.h@ecommerce-innovations.com,E-Commerce Innovations,New,Web,2024-09-02 16:15:00,CMP005
+LED065,Kendall,Martin,kendall.m@industrial-auto.com,Industrial Automation Inc,Qualified,Partner,2024-09-07 13:00:00,CMP004
+LED066,Ellis,Thomas,ellis.t@softwarepro.com,SoftwareSolutions Pro,Working,Webinar,2024-09-13 09:45:00,CMP002
+LED067,Lennon,Jackson,lennon.j@pharmaventures.com,Pharmaceutical Ventures,New,Web,2024-09-17 15:00:00,CMP005
+LED068,Ashton,Wilson,ashton.w@bankingsystems.com,Banking Systems Ltd,Qualified,Conference,2024-09-21 12:30:00,CMP003
+LED069,Dakota,Brown,dakota.b@luxuryretail.com,Luxury Retail Group,Working,Referral,2024-09-26 10:00:00,CMP012
+LED070,Armani,Davis,armani.d@smartmfgtech.com,Smart Manufacturing Tech,Unqualified,Partner,2024-10-02 16:30:00,CMP008
+LED071,Scout,Miller,scout.m@ailab.io,AI Innovations Lab,New,Webinar,2024-10-06 14:15:00,CMP009
+LED072,Micah,Moore,micah.m@wellnesscenters.com,Wellness Centers Network,Working,Web,2024-10-11 11:45:00,CMP010
+LED073,Harley,Thompson,harley.t@fintechsol.com,FinTech Solutions,Qualified,Conference,2024-10-14 09:30:00,CMP007
+LED074,Dallas,Martinez,dallas.m@outdoorsports.com,Outdoor Sports Retail,New,Referral,2024-10-16 15:00:00,CMP012
+LED075,Tatum,Rodriguez,tatum.r@roboticsmfg.com,Robotics Manufacturing,Working,Partner,2024-10-19 12:15:00,CMP004
+LED076,Bellamy,Lee,bellamy.l@techventures.com,TechVentures Inc,Qualified,Web,2024-10-22 10:00:00,CMP014
+LED077,Briar,Garcia,briar.g@healthfirst.com,HealthFirst Solutions,Unqualified,Webinar,2024-10-24 16:45:00,CMP009
+LED078,Wren,Anderson,wren.a@globalfinance.com,Global Finance Corp,New,Web,2024-10-26 13:30:00,CMP010
+LED079,Juniper,Taylor,juniper.t@retailmax.com,RetailMax Chain,Working,Conference,2024-10-28 09:15:00,CMP007
+LED080,Indigo,White,indigo.w@advmfg.com,Advanced Manufacturing LLC,Qualified,Partner,2024-10-30 15:30:00,CMP008
+LED081,Sterling,Harris,sterling.h@cloudscale.io,CloudScale Systems,New,Referral,2024-11-01 12:00:00,CMP012
+LED082,Phoenix,Martin,phoenix.m2@medicare.com,MediCare Partners,Working,Web,2024-11-02 10:30:00,CMP014
+LED083,Marlowe,Thomas,marlowe.t@invdynamics.com,Investment Dynamics,Qualified,Webinar,2024-11-03 16:00:00,CMP009
+LED084,Cypress,Jackson,cypress.j@fashionforward.com,Fashion Forward Retail,Unqualified,Web,2024-11-04 13:45:00,CMP014
+LED085,Harbor,Wilson,harbor.w@precisioneng.com,Precision Engineering Co,New,Partner,2024-11-05 11:15:00,CMP004
+LED086,Navy,Brown,navy.b@datadriven.ai,DataDriven Analytics,Working,Conference,2024-11-06 15:45:00,CMP007
+LED087,Story,Davis,story.d@regionalhospital.org,Regional Hospital Network,Qualified,Referral,2024-11-07 14:00:00,CMP012
+LED088,Arrow,Miller,arrow.m@capitalgrowth.com,Capital Growth Partners,New,Web,2024-11-08 10:45:00,CMP014
+LED089,Echo,Moore,echo.m@ecommerce-innovations.com,E-Commerce Innovations,Working,Webinar,2024-08-17 15:30:00,CMP006
+LED090,Wilde,Thompson,wilde.t@industrial-auto.com,Industrial Automation Inc,Qualified,Partner,2024-08-23 12:00:00,CMP004
+LED091,Canyon,Martinez,canyon.m@softwarepro.com,SoftwareSolutions Pro,Unqualified,Web,2024-08-29 09:30:00,CMP005
+LED092,Blaze,Rodriguez,blaze.r@pharmaventures.com,Pharmaceutical Ventures,New,Conference,2024-09-04 16:15:00,CMP003
+LED093,Summit,Lee,summit.l@bankingsystems.com,Banking Systems Ltd,Working,Referral,2024-09-09 13:45:00,CMP012
+LED094,River,Garcia,river.g@luxuryretail.com,Luxury Retail Group,Qualified,Webinar,2024-09-16 11:00:00,CMP002
+LED095,Atlas,Anderson,atlas.a@smartmfgtech.com,Smart Manufacturing Tech,New,Web,2024-09-23 15:15:00,CMP005
+LED096,Nova,Taylor,nova.t@ailab.io,AI Innovations Lab,Working,Partner,2024-09-30 12:30:00,CMP008
+LED097,Lyric,White,lyric.w@wellnesscenters.com,Wellness Centers Network,Qualified,Webinar,2024-10-07 09:00:00,CMP009
+LED098,Reign,Harris,reign.h@fintechsol.com,FinTech Solutions,Unqualified,Web,2024-10-12 16:30:00,CMP010
+LED099,Ocean,Martin,ocean.m@outdoorsports.com,Outdoor Sports Retail,New,Conference,2024-10-17 14:45:00,CMP007
+LED100,Valor,Thomas,valor.t@roboticsmfg.com,Robotics Manufacturing,Working,Partner,2024-10-20 11:15:00,CMP004

@@ -1,0 +1,16 @@
+Id,Name,Type,Status,StartDate,Budget,CreatedDate
+CMP001,Spring Product Launch 2024,Email,Completed,2024-01-15,25000.00,2024-01-10 09:00:00
+CMP002,Tech Summit 2024,Conference,Completed,2024-02-20,45000.00,2024-01-25 14:30:00
+CMP003,Partner Referral Program,Partner,Active,2024-03-01,15000.00,2024-02-28 10:00:00
+CMP004,Webinar: AI in Enterprise,Webinar,Completed,2024-04-10,8000.00,2024-03-15 11:00:00
+CMP005,Summer Sale Campaign,Email,Active,2024-06-01,30000.00,2024-05-20 08:00:00
+CMP006,LinkedIn Ads - Q2,Social Media,Active,2024-04-01,20000.00,2024-03-25 16:00:00
+CMP007,Customer Success Stories,Content,Active,2024-05-15,12000.00,2024-05-01 13:00:00
+CMP008,Trade Show - SaaStr,Conference,Planned,2024-09-15,50000.00,2024-08-01 09:00:00
+CMP009,Email Nurture - Enterprise,Email,Active,2024-07-01,18000.00,2024-06-15 10:30:00
+CMP010,Referral Rewards,Partner,Active,2024-01-01,10000.00,2023-12-15 12:00:00
+CMP011,Webinar: Cloud Migration,Webinar,Completed,2024-03-25,7500.00,2024-03-01 15:00:00
+CMP012,Google Ads - Brand,Search,Active,2024-01-01,35000.00,2023-12-20 11:00:00
+CMP013,Product Demo Series,Webinar,Active,2024-08-01,9000.00,2024-07-15 14:00:00
+CMP014,Black Friday Promo,Email,Planned,2024-11-20,22000.00,2024-10-01 10:00:00
+CMP015,Industry Report Launch,Content,Completed,2024-02-15,13000.00,2024-01-30 09:30:00
