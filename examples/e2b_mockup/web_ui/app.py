@@ -502,8 +502,8 @@ class AgentSession:
                                 text_delta = event.delta.text
                                 response_text += text_delta
 
-                                # Stream to WebSocket
-                                await self.websocket.send_json({
+                                # Stream to WebSocket (safely)
+                                await self._safe_send({
                                     "type": "agent_delta",
                                     "delta": text_delta,
                                     "timestamp": datetime.now().isoformat()
@@ -524,8 +524,8 @@ class AgentSession:
                     self.total_cache_creation_tokens += cache_creation
                     self.total_cache_read_tokens += cache_read
 
-                    # Send usage update to frontend
-                    await self.websocket.send_json({
+                    # Send usage update to frontend (safely)
+                    await self._safe_send({
                         "type": "usage",
                         "usage": {
                             "input_tokens": usage.input_tokens,
@@ -830,7 +830,7 @@ class AgentSession:
 
     async def send_agent_message(self, content: str):
         """Send an agent text message to the frontend."""
-        await self.websocket.send_json({
+        await self._safe_send({
             "type": "agent_message",
             "content": content,
             "timestamp": datetime.now().isoformat()
@@ -839,9 +839,29 @@ class AgentSession:
         # Add to history
         self.message_history.append({"role": "assistant", "content": content})
 
+    async def _safe_send(self, data: Dict[str, Any]) -> bool:
+        """
+        Safely send data via WebSocket, handling disconnection gracefully.
+
+        Returns:
+            bool: True if sent successfully, False if WebSocket is closed
+        """
+        try:
+            # Check if WebSocket is still connected
+            if self.websocket.client_state.name != "CONNECTED":
+                logger.debug(f"Session {self.session_id}: WebSocket not connected, skipping send")
+                return False
+
+            await self.websocket.send_json(data)
+            return True
+        except Exception as e:
+            # WebSocket closed during send - this is normal during cleanup
+            logger.debug(f"Session {self.session_id}: Failed to send message (WebSocket closed): {e}")
+            return False
+
     async def send_status(self, status: str):
         """Send a status update to the frontend."""
-        await self.websocket.send_json({
+        await self._safe_send({
             "type": "status",
             "content": status,
             "timestamp": datetime.now().isoformat()
@@ -849,7 +869,7 @@ class AgentSession:
 
     async def send_error(self, error: str):
         """Send an error message to the frontend."""
-        await self.websocket.send_json({
+        await self._safe_send({
             "type": "error",
             "error": error,
             "timestamp": datetime.now().isoformat()
@@ -857,7 +877,7 @@ class AgentSession:
 
     async def send_tool_status(self, tool: str, status: str):
         """Send tool execution status to the frontend."""
-        await self.websocket.send_json({
+        await self._safe_send({
             "type": "tool",
             "tool": tool,
             "status": status,
@@ -866,7 +886,7 @@ class AgentSession:
 
     async def send_result(self, result: Dict[str, Any]):
         """Send query results to the frontend."""
-        await self.websocket.send_json({
+        await self._safe_send({
             "type": "result",
             "success": result['success'],
             "data": result.get('data'),
@@ -876,7 +896,7 @@ class AgentSession:
 
     async def send_typing(self, is_typing: bool):
         """Send typing indicator to the frontend."""
-        await self.websocket.send_json({
+        await self._safe_send({
             "type": "typing",
             "is_typing": is_typing,
             "timestamp": datetime.now().isoformat()
@@ -952,7 +972,11 @@ async def websocket_endpoint(websocket: WebSocket):
 
             elif message_type == 'ping':
                 # Respond to ping to keep connection alive
-                await websocket.send_json({"type": "pong"})
+                try:
+                    await websocket.send_json({"type": "pong"})
+                except Exception:
+                    # WebSocket closed, will be handled by outer exception handler
+                    pass
 
             else:
                 logger.warning(f"Unknown message type: {message_type}")
