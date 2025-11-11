@@ -76,7 +76,7 @@ print(f"Date threshold: {{date_threshold}}")
 
 # Query for recent leads
 query = """
-SELECT Id, Name, Email, Company, Status, CreatedDate
+SELECT Id, FirstName, LastName, Email, Company, Status, CreatedDate
 FROM Lead
 WHERE CreatedDate >= {{date_threshold}}
 ORDER BY CreatedDate DESC
@@ -94,7 +94,8 @@ try:
     if leads:
         print("\\nSample leads:")
         for i, lead in enumerate(leads[:5], 1):
-            print(f"  {{i}}. {{lead.get('Name', 'N/A')}} - {{lead.get('Company', 'N/A')}} ({{lead.get('Status', 'N/A')}})")
+            name = f"{{lead.get('FirstName', '')}} {{lead.get('LastName', 'N/A')}}".strip()
+            print(f"  {{i}}. {{name}} - {{lead.get('Company', 'N/A')}} ({{lead.get('Status', 'N/A')}})")
 
         if len(leads) > 5:
             print(f"  ... and {{len(leads) - 5}} more")
@@ -196,7 +197,7 @@ try:
                 # Build IN clause with lead IDs
                 lead_ids_str = "', '".join(lead_ids)
                 leads_query = f"""
-                SELECT Id, Name, Email, Company, Status
+                SELECT Id, FirstName, LastName, Email, Company, Status
                 FROM Lead
                 WHERE Id IN ('{{lead_ids_str}}')
                 """
@@ -224,7 +225,8 @@ try:
         if leads:
             print("\\nSample leads:")
             for i, lead in enumerate(leads[:5], 1):
-                print(f"  {{i}}. {{lead.get('Name', 'N/A')}} - {{lead.get('Company', 'N/A')}}")
+                name = f"{{lead.get('FirstName', '')}} {{lead.get('LastName', 'N/A')}}".strip()
+                print(f"  {{i}}. {{name}} - {{lead.get('Company', 'N/A')}}")
 
         print("\\n" + "="*50)
         print(json.dumps(result, indent=2))
@@ -276,7 +278,7 @@ client = SalesforceClient(
 try:
     # Query leads by status
     query = """
-    SELECT Id, Name, Email, Company, Status, CreatedDate, LastModifiedDate
+    SELECT Id, FirstName, LastName, Email, Company, Status, CreatedDate
     FROM Lead
     WHERE Status = '{status}'
     ORDER BY CreatedDate DESC
@@ -308,7 +310,8 @@ try:
 
         print("\\nSample leads:")
         for i, lead in enumerate(leads[:5], 1):
-            print(f"  {{i}}. {{lead.get('Name', 'N/A')}} - {{lead.get('Company', 'N/A')}} - {{lead.get('Email', 'N/A')}}")
+            name = f"{{lead.get('FirstName', '')}} {{lead.get('LastName', 'N/A')}}".strip()
+            print(f"  {{i}}. {{name}} - {{lead.get('Company', 'N/A')}} - {{lead.get('Email', 'N/A')}}")
 
         if len(leads) > 5:
             print(f"  ... and {{len(leads) - 5}} more")
@@ -367,7 +370,7 @@ client = SalesforceClient(
 try:
     # Query all leads
     query = """
-    SELECT Id, Name, Email, Company, Status, CreatedDate
+    SELECT Id, FirstName, LastName, Email, Company, Status, CreatedDate
     FROM Lead
     ORDER BY CreatedDate DESC
     LIMIT {limit}
@@ -393,7 +396,8 @@ try:
     if leads:
         print("\\nSample leads:")
         for i, lead in enumerate(leads[:5], 1):
-            print(f"  {{i}}. {{lead.get('Name', 'N/A')}} - {{lead.get('Company', 'N/A')}} ({{lead.get('Status', 'N/A')}})")
+            name = f"{{lead.get('FirstName', '')}} {{lead.get('LastName', 'N/A')}}".strip()
+            print(f"  {{i}}. {{name}} - {{lead.get('Company', 'N/A')}} ({{lead.get('Status', 'N/A')}})")
 
         if len(leads) > 5:
             print(f"  ... and {{len(leads) - 5}} more")
@@ -655,7 +659,7 @@ if __name__ == '__main__':
     print("\n1. Recent Leads Template:")
     print("-"*80)
     script = ScriptTemplates.get_recent_leads(
-        api_url='http://host.docker.internal:8000',
+        api_url='http://localhost:8000',
         api_key='test_key',
         days=30
     )
@@ -665,7 +669,7 @@ if __name__ == '__main__':
     print("\n\n2. Campaign with Leads Template:")
     print("-"*80)
     script = ScriptTemplates.get_campaign_with_leads(
-        api_url='http://host.docker.internal:8000',
+        api_url='http://localhost:8000',
         api_key='test_key',
         campaign_name='Summer Campaign'
     )
@@ -675,7 +679,7 @@ if __name__ == '__main__':
     print("\n\n3. Custom Query Template:")
     print("-"*80)
     script = ScriptTemplates.custom_query(
-        api_url='http://host.docker.internal:8000',
+        api_url='http://localhost:8000',
         api_key='test_key',
         soql_query="SELECT Id, Name FROM Lead WHERE Email != null LIMIT 10"
     )

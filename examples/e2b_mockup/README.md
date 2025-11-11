@@ -12,11 +12,7 @@ pip install -r requirements.txt
 cp .env.example .env
 # Edit .env and add your E2B_API_KEY
 
-# 3. Start mock API (in separate terminal)
-cd mock_api
-python main.py
-
-# 4. Run tests
+# 3. Run tests (AgentExecutor handles mock API automatically)
 python test_executor.py
 
 # 5. Try examples
@@ -31,23 +27,27 @@ This project demonstrates a complete agent-based integration system for Salesfor
 
 1. **AI Agent** receives natural language request (e.g., "Get all leads from last 30 days")
 2. **Agent Executor** orchestrates the execution:
-   - Creates isolated E2B sandbox
-   - Loads Salesforce driver
+   - Creates isolated E2B sandbox (cloud VM)
+   - Uploads Mock API to sandbox
+   - Uploads Salesforce driver to sandbox
+   - Uploads DuckDB database to sandbox
+   - Starts Mock API inside sandbox (localhost:8000)
    - Discovers schema
    - Generates Python script
    - Executes safely in sandbox
-3. **Salesforce Driver** communicates with API
-4. **Mock API** provides test data
+3. **Salesforce Driver** communicates with Mock API (both inside sandbox)
+4. **Mock API** provides test data from DuckDB (all inside sandbox)
 5. **Results** returned to user
 
 ### Why E2B Sandboxes?
 
-E2B provides isolated, secure execution environments:
-- Code runs in separate Docker containers
+E2B provides isolated, secure cloud execution environments:
+- Code runs in cloud VMs (not Docker containers)
 - No access to host filesystem
-- Limited network access
+- Controlled network access
 - Resource and time limits
 - Perfect for AI-generated code
+- Everything runs inside the sandbox (API, database, scripts)
 
 ## Directory Structure
 
@@ -131,7 +131,7 @@ Pre-built templates for common Salesforce operations:
 from script_templates import ScriptTemplates
 
 script = ScriptTemplates.get_recent_leads(
-    api_url='http://host.docker.internal:8000',
+    api_url='http://localhost:8000',  # Used inside sandbox
     api_key='test_key',
     days=30
 )
@@ -163,7 +163,7 @@ leads = client.query("SELECT Id, Name FROM Lead")
 
 ### 4. Mock API (`mock_api/`)
 
-FastAPI-based mock Salesforce API:
+FastAPI-based mock Salesforce API that runs INSIDE E2B sandboxes:
 
 - Object listing (`/sobjects`)
 - Schema description (`/sobjects/{object}/describe`)
@@ -171,11 +171,16 @@ FastAPI-based mock Salesforce API:
 - DuckDB backend
 - Realistic test data
 
+**Deployment:**
+- AgentExecutor automatically uploads the mock API code to the sandbox
+- Starts the API server inside the sandbox on `localhost:8000`
+- Scripts running in the sandbox call `localhost:8000`
+- No need to run the API manually on your host machine
+
+**For local testing only:**
 ```bash
 cd mock_api
-python main.py
-
-# API runs on http://localhost:8000
+python main.py  # Only needed for testing the API in isolation
 ```
 
 **See [mock_api/README.md](mock_api/README.md)**
@@ -207,19 +212,29 @@ executor.execute("Get all leads")
 ```
 User Request
     ↓
-Agent Executor
-    ↓ Create E2B Sandbox
-    ↓ Upload Driver Files
-    ↓ Run Discovery
+Agent Executor (on host)
+    ↓ Create E2B Sandbox (cloud VM)
+    ↓ Upload Mock API to sandbox
+    ↓ Upload DuckDB to sandbox
+    ↓ Upload Driver to sandbox
+    ↓ Start Mock API in sandbox (localhost:8000)
     ↓ Generate Script
-    ↓ Execute in Sandbox
-    ↓   ↓
-    ↓   → Salesforce Driver → Mock API → DuckDB
-    ↓   ←                   ←          ←
+    ↓ Execute Script in Sandbox
+    ↓
+    ↓ [Inside E2B Sandbox]
+    ↓   Python Script → Salesforce Driver → Mock API (localhost:8000) → DuckDB
+    ↓                  ←                   ←                           ←
+    ↓
     ↓ Parse Results
     ↓
 Return to User
 ```
+
+**Key Architecture Points:**
+- Mock API runs INSIDE the E2B sandbox, not on host
+- Scripts call `localhost:8000` (same machine, inside sandbox)
+- No network communication between host and sandbox needed for API calls
+- AgentExecutor uploads everything: API code, database, driver
 
 **See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed flow diagrams.**
 
@@ -344,7 +359,7 @@ Required variables (set in `.env`):
 # E2B API key (get from https://e2b.dev/)
 E2B_API_KEY=e2b_sk_your_key_here
 
-# Mock API URL (default: http://localhost:8000)
+# Mock API URL (used inside sandbox, always localhost:8000)
 SF_API_URL=http://localhost:8000
 
 # Mock API key (any value for testing)
@@ -353,12 +368,16 @@ SF_API_KEY=test_key_12345
 
 ### Network Configuration
 
-The executor automatically handles network addressing:
+All components run INSIDE the E2B sandbox:
 
-- **On Host:** `http://localhost:8000`
-- **In E2B Sandbox:** `http://host.docker.internal:8000`
+- **Mock API:** Runs inside sandbox on `localhost:8000`
+- **DuckDB:** File uploaded to sandbox filesystem
+- **Salesforce Driver:** Uploaded to sandbox
+- **User Scripts:** Execute in sandbox, call `localhost:8000`
 
-This conversion happens automatically in the executor.
+No network translation needed - everything is on the same machine (the E2B sandbox VM).
+
+The `SF_API_URL` should always be `http://localhost:8000` because scripts use this URL inside the sandbox to connect to the Mock API running on the same sandbox.
 
 ## Architecture Highlights
 
@@ -495,8 +514,9 @@ class AgentExecutor:
 - Add your E2B API key
 
 **"Cannot connect to Mock API"**
-- Start the mock API: `cd mock_api && python main.py`
-- Verify with: `curl http://localhost:8000/health`
+- The Mock API runs automatically inside E2B sandboxes
+- No need to start it manually on your host machine
+- If testing the API locally in isolation: `cd mock_api && python main.py`
 
 **"Failed to create sandbox"**
 - Check E2B API key is valid

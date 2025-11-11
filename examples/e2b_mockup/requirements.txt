@@ -1,18 +1,27 @@
 # E2B Integration
 e2b-code-interpreter>=0.0.8
 
-# Mock API Server
+# Mock API Server (mock_api/)
 fastapi>=0.104.0
 uvicorn>=0.24.0
 pydantic>=2.5.0
+python-dateutil>=2.8.2
 
 # Database
 duckdb>=0.9.0
 
-# Driver dependencies
+# HTTP Client & Environment (salesforce_driver/)
 requests>=2.31.0
 python-dotenv>=1.0.0
 
-# Development
+# Agent SDK & AI
+claude-agent-sdk>=0.1.0
+anthropic>=0.39.0
+
+# Web UI & WebSocket
+websockets>=12.0
+python-multipart>=0.0.6
+
+# Development & Testing
 pytest>=7.4.0
 pytest-asyncio>=0.21.0

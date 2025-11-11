@@ -3,11 +3,19 @@ Agent Executor for Salesforce Driver in E2B Sandbox
 
 This module orchestrates the execution of Salesforce operations within an E2B sandbox.
 It simulates how an AI agent would:
-1. Create a secure E2B sandbox environment
-2. Load the Salesforce driver into the sandbox
-3. Perform discovery operations (list objects, get fields)
-4. Generate and execute Python scripts based on user requests
-5. Return results and handle errors gracefully
+1. Create a secure E2B sandbox environment (cloud VM)
+2. Upload and start the Mock API server inside the sandbox
+3. Upload the test database and Salesforce driver
+4. Perform discovery operations (list objects, get fields)
+5. Generate and execute Python scripts based on user requests
+6. Return results and handle errors gracefully
+
+**CRITICAL ARCHITECTURE:**
+E2B sandbox is a cloud VM, NOT local Docker. Everything runs INSIDE the sandbox:
+- Mock API (uvicorn) runs on localhost:8000 WITHIN the sandbox
+- DuckDB database is uploaded to the sandbox
+- Salesforce driver is uploaded to the sandbox
+- User scripts run inside the sandbox and access localhost:8000
 
 The executor bridges the gap between user intent and actual Salesforce operations,
 providing isolation and security through E2B's sandboxed environment.
@@ -15,6 +23,7 @@ providing isolation and security through E2B's sandboxed environment.
 
 import os
 import sys
+import time
 import logging
 from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
@@ -41,8 +50,9 @@ class AgentExecutor:
     Orchestrates the execution of Salesforce operations in an E2B sandbox.
 
     This class simulates how an AI agent would interact with the Salesforce driver:
-    - Creates isolated sandbox environments
-    - Uploads and configures the driver
+    - Creates isolated sandbox environments (cloud VM)
+    - Uploads mock API, database, and driver
+    - Starts mock API server inside sandbox
     - Discovers available Salesforce objects and fields
     - Generates and executes operation scripts
     - Returns structured results
@@ -56,26 +66,23 @@ class AgentExecutor:
     def __init__(
         self,
         e2b_api_key: Optional[str] = None,
-        sf_api_url: Optional[str] = None,
         sf_api_key: Optional[str] = None,
-        auto_load_driver: bool = True
+        auto_setup: bool = True
     ):
         """
         Initialize the Agent Executor.
 
         Args:
             e2b_api_key: E2B API key (defaults to E2B_API_KEY env var)
-            sf_api_url: Salesforce API URL (defaults to SF_API_URL env var)
             sf_api_key: Salesforce API key (defaults to SF_API_KEY env var)
-            auto_load_driver: Whether to automatically load driver on sandbox creation
+            auto_setup: Whether to automatically setup sandbox (upload files, start API)
         """
         # Load environment variables
         load_dotenv()
 
         self.e2b_api_key = e2b_api_key or os.getenv('E2B_API_KEY')
-        self.sf_api_url = sf_api_url or os.getenv('SF_API_URL', 'http://localhost:8000')
-        self.sf_api_key = sf_api_key or os.getenv('SF_API_KEY')
-        self.auto_load_driver = auto_load_driver
+        self.sf_api_key = sf_api_key or os.getenv('SF_API_KEY', 'mock_api_key_12345')
+        self.auto_setup = auto_setup
 
         # Validate required credentials
         if not self.e2b_api_key:
@@ -83,27 +90,25 @@ class AgentExecutor:
                 "E2B API key is required. Set E2B_API_KEY environment variable or pass e2b_api_key parameter."
             )
 
-        if not self.sf_api_key:
-            raise ValueError(
-                "Salesforce API key is required. Set SF_API_KEY environment variable or pass sf_api_key parameter."
-            )
-
-        # Convert localhost URL to docker-accessible URL for sandbox
-        # In E2B sandbox, localhost on host is accessible via host.docker.internal
-        self.sandbox_sf_api_url = self.sf_api_url.replace('localhost', 'host.docker.internal')
+        # Inside E2B sandbox, the API will be accessible at localhost:8000
+        self.sandbox_sf_api_url = 'http://localhost:8000'
 
         logger.info(f"AgentExecutor initialized")
-        logger.info(f"  SF API URL (host): {self.sf_api_url}")
-        logger.info(f"  SF API URL (sandbox): {self.sandbox_sf_api_url}")
+        logger.info(f"  SF API URL (inside sandbox): {self.sandbox_sf_api_url}")
 
         self.sandbox: Optional[Sandbox] = None
+        self.api_process_handle: Optional[str] = None
         self.driver_loaded = False
+        self.api_started = False
         self.discovered_objects: Optional[List[str]] = None
         self.object_schemas: Dict[str, Dict] = {}
 
+        # Get base directory (where agent_executor.py lives)
+        self.base_dir = Path(__file__).parent
+
     def create_sandbox(self) -> Sandbox:
         """
-        Create a new E2B sandbox environment.
+        Create a new E2B sandbox environment (cloud VM).
 
         Returns:
             Sandbox instance
@@ -117,8 +122,11 @@ class AgentExecutor:
             self.sandbox = Sandbox.create(api_key=self.e2b_api_key)
             logger.info(f"Sandbox created successfully: {self.sandbox.sandbox_id}")
 
-            # Auto-load driver if enabled
-            if self.auto_load_driver:
+            # Auto-setup if enabled
+            if self.auto_setup:
+                logger.info("Auto-setup enabled, uploading files and starting services...")
+                self.upload_files()
+                self.start_mock_api()
                 self.load_driver()
 
             return self.sandbox
@@ -127,55 +135,227 @@ class AgentExecutor:
             logger.error(f"Failed to create sandbox: {str(e)}")
             raise
 
-    def load_driver(self) -> bool:
+    def upload_files(self) -> bool:
         """
-        Upload and configure the Salesforce driver in the sandbox.
+        Upload all required files to the E2B sandbox.
+
+        This includes:
+        1. Mock API files (main.py, db.py, models.py, soql_parser.py, swagger.yaml, __init__.py)
+        2. Test database (salesforce.duckdb) - BINARY file
+        3. Salesforce driver files (client.py, exceptions.py, __init__.py, examples/)
+
+        Returns:
+            True if all files uploaded successfully
+
+        Raises:
+            RuntimeError: If sandbox not created or upload fails
+        """
+        if not self.sandbox:
+            raise RuntimeError("Sandbox not created. Call create_sandbox() first.")
+
+        logger.info("Uploading files to sandbox...")
+
+        try:
+            # 1. Upload Mock API files
+            logger.info("Uploading mock_api files...")
+            mock_api_dir = self.base_dir / 'mock_api'
+
+            if not mock_api_dir.exists():
+                raise FileNotFoundError(f"Mock API directory not found at {mock_api_dir}")
+
+            # Upload each Python/YAML file in mock_api (excluding test files)
+            for file_path in mock_api_dir.glob('*'):
+                if file_path.is_file() and not file_path.name.startswith('test_'):
+                    logger.info(f"  Uploading {file_path.name}...")
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    remote_path = f'/home/user/mock_api/{file_path.name}'
+                    self.sandbox.files.write(remote_path, content)
+
+            logger.info("Mock API files uploaded successfully")
+
+            # 2. Upload test database (BINARY)
+            logger.info("Uploading test database...")
+            db_path = self.base_dir / 'test_data' / 'salesforce.duckdb'
+
+            if not db_path.exists():
+                raise FileNotFoundError(f"Database not found at {db_path}")
+
+            logger.info(f"  Uploading {db_path.name} (binary)...")
+            with open(db_path, 'rb') as f:
+                content = f.read()
+
+            # Write binary content
+            remote_db_path = '/home/user/test_data/salesforce.duckdb'
+            self.sandbox.files.write(remote_db_path, content)
+            logger.info(f"Database uploaded successfully ({len(content)} bytes)")
+
+            # 3. Upload Salesforce driver files
+            logger.info("Uploading salesforce_driver files...")
+            driver_dir = self.base_dir / 'salesforce_driver'
+
+            if not driver_dir.exists():
+                raise FileNotFoundError(f"Salesforce driver not found at {driver_dir}")
+
+            # Upload driver root files
+            for py_file in driver_dir.glob('*.py'):
+                if py_file.name.startswith('test_'):
+                    continue  # Skip test files
+
+                logger.info(f"  Uploading {py_file.name}...")
+                with open(py_file, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                remote_path = f'/home/user/salesforce_driver/{py_file.name}'
+                self.sandbox.files.write(remote_path, content)
+
+            # Upload driver examples subdirectory
+            examples_dir = driver_dir / 'examples'
+            if examples_dir.exists():
+                logger.info("  Uploading examples/...")
+                for example_file in examples_dir.glob('*.py'):
+                    logger.info(f"    Uploading {example_file.name}...")
+                    with open(example_file, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    remote_path = f'/home/user/salesforce_driver/examples/{example_file.name}'
+                    self.sandbox.files.write(remote_path, content)
+
+            logger.info("Salesforce driver files uploaded successfully")
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to upload files: {str(e)}")
+            raise
+
+    def start_mock_api(self) -> bool:
+        """
+        Start the Mock API server inside the E2B sandbox.
 
         This method:
-        1. Locates the salesforce_driver directory
-        2. Uploads all Python files to the sandbox
-        3. Installs required dependencies (requests)
-        4. Verifies the driver is importable
+        1. Installs required dependencies (fastapi, uvicorn, duckdb, pydantic)
+        2. Starts uvicorn server in background on port 8000
+        3. Waits for server to be ready
+        4. Performs health check
+
+        Returns:
+            True if API started successfully
+
+        Raises:
+            RuntimeError: If sandbox not created or API startup fails
+        """
+        if not self.sandbox:
+            raise RuntimeError("Sandbox not created. Call create_sandbox() first.")
+
+        logger.info("Starting Mock API server inside sandbox...")
+
+        try:
+            # 1. Install dependencies
+            logger.info("Installing API dependencies (fastapi, uvicorn, duckdb, pydantic)...")
+            install_cmd = "pip install fastapi uvicorn duckdb pydantic pyyaml -q"
+            install_result = self.sandbox.run_code(f"!{install_cmd}")
+
+            if install_result.error:
+                logger.warning(f"Dependency installation warning: {install_result.error}")
+            else:
+                logger.info("Dependencies installed successfully")
+
+            # 2. Start uvicorn in background
+            logger.info("Starting uvicorn server on port 8000...")
+            start_cmd = "cd /home/user/mock_api && uvicorn main:app --host 0.0.0.0 --port 8000"
+
+            # Run in background using subprocess
+            start_script = f"""
+import subprocess
+import sys
+
+# Start uvicorn in background
+process = subprocess.Popen(
+    [sys.executable, '-m', 'uvicorn', 'main:app', '--host', '0.0.0.0', '--port', '8000'],
+    cwd='/home/user/mock_api',
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    start_new_session=True
+)
+
+print(f"Started uvicorn with PID: {{process.pid}}")
+"""
+
+            result = self.sandbox.run_code(start_script)
+
+            if result.error:
+                logger.error(f"Failed to start uvicorn: {result.error}")
+                raise RuntimeError(f"Failed to start Mock API: {result.error}")
+
+            logger.info(f"Uvicorn started: {("".join(result.logs.stdout) if result.logs.stdout else "")}")
+            self.api_started = True
+
+            # 3. Wait for server to be ready
+            logger.info("Waiting for API server to be ready (3 seconds)...")
+            time.sleep(3)
+
+            # 4. Health check
+            logger.info("Performing health check...")
+            health_check_script = """
+import requests
+import json
+
+try:
+    response = requests.get('http://localhost:8000/health', timeout=5)
+    result = {
+        'success': response.status_code == 200,
+        'status_code': response.status_code,
+        'body': response.json() if response.status_code == 200 else response.text
+    }
+    print(json.dumps(result))
+except Exception as e:
+    print(json.dumps({'success': False, 'error': str(e)}))
+"""
+
+            health_result = self.sandbox.run_code(health_check_script)
+
+            if health_result.error:
+                raise RuntimeError(f"Health check failed: {health_result.error}")
+
+            # Parse health check result from stdout (print() output)
+            import json
+            stdout_text = ''.join(health_result.logs.stdout) if health_result.logs.stdout else ''
+            if not stdout_text:
+                raise RuntimeError("Health check returned no output")
+            health_data = json.loads(stdout_text.strip())
+
+            if not health_data.get('success'):
+                raise RuntimeError(f"API not responding: {health_data.get('error', 'Unknown error')}")
+
+            logger.info(f"Health check passed: {health_data.get('body')}")
+            logger.info("Mock API server is ready!")
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to start Mock API: {str(e)}")
+            raise
+
+    def load_driver(self) -> bool:
+        """
+        Verify the Salesforce driver is available in the sandbox.
+
+        The driver files should already be uploaded by upload_files().
+        This method just verifies they're importable.
 
         Returns:
             True if driver loaded successfully
 
         Raises:
-            RuntimeError: If sandbox not created or driver loading fails
+            RuntimeError: If sandbox not created or driver verification fails
         """
         if not self.sandbox:
             raise RuntimeError("Sandbox not created. Call create_sandbox() first.")
 
-        logger.info("Loading Salesforce driver into sandbox...")
+        logger.info("Verifying Salesforce driver...")
 
         try:
-            # Get the salesforce_driver directory path
-            driver_path = Path(__file__).parent / 'salesforce_driver'
-
-            if not driver_path.exists():
-                raise FileNotFoundError(f"Salesforce driver not found at {driver_path}")
-
-            # Upload each Python file in the driver
-            logger.info(f"Uploading driver files from {driver_path}...")
-
-            for py_file in driver_path.glob('*.py'):
-                if py_file.name.startswith('test_'):
-                    continue  # Skip test files
-
-                logger.info(f"  Uploading {py_file.name}...")
-
-                # Read file content
-                with open(py_file, 'r') as f:
-                    content = f.read()
-
-                # Write to sandbox
-                remote_path = f'/home/user/salesforce_driver/{py_file.name}'
-                self.sandbox.filesystem.write(remote_path, content)
-
-            logger.info("Driver files uploaded successfully")
-
-            # Install required dependencies
-            logger.info("Installing dependencies (requests)...")
+            # Install requests dependency
+            logger.info("Installing driver dependencies (requests)...")
             install_result = self.sandbox.run_code("!pip install requests -q")
 
             if install_result.error:
@@ -184,7 +364,7 @@ class AgentExecutor:
                 logger.info("Dependencies installed successfully")
 
             # Verify driver is importable
-            logger.info("Verifying driver import...")
+            logger.info("Testing driver import...")
             test_import = """
 import sys
 sys.path.insert(0, '/home/user')
@@ -198,13 +378,13 @@ print("Driver imported successfully!")
             if result.error:
                 raise RuntimeError(f"Driver import failed: {result.error}")
 
-            logger.info(f"Driver verification: {result.text}")
+            logger.info(f"Driver verification: {("".join(result.logs.stdout) if result.logs.stdout else "")}")
             self.driver_loaded = True
 
             return True
 
         except Exception as e:
-            logger.error(f"Failed to load driver: {str(e)}")
+            logger.error(f"Failed to verify driver: {str(e)}")
             raise
 
     def run_discovery(self) -> Dict[str, Any]:
@@ -234,7 +414,7 @@ sys.path.insert(0, '/home/user')
 
 from salesforce_driver import SalesforceClient
 
-# Initialize client with sandbox-accessible URL
+# Initialize client (API is at localhost:8000 inside sandbox)
 client = SalesforceClient(
     api_url='{self.sandbox_sf_api_url}',
     api_key='{self.sf_api_key}'
@@ -268,12 +448,9 @@ print(f"\\nDiscovery complete! Objects: {{objects}}")
                 raise RuntimeError(f"Discovery execution failed: {result.error}")
 
             logger.info("Discovery output:")
-            logger.info(result.text)
+            logger.info(("".join(result.logs.stdout) if result.logs.stdout else ""))
 
-            # Parse the output to extract objects
-            # In a real implementation, we'd use result.results or structured output
-            # For now, we'll run a simpler query to get the data
-
+            # Extract structured data
             extract_code = f"""
 import sys
 sys.path.insert(0, '/home/user')
@@ -316,9 +493,12 @@ print(json.dumps(result))
             if extract_result.error:
                 raise RuntimeError(f"Failed to extract discovery data: {extract_result.error}")
 
-            # Parse JSON output
+            # Parse JSON output from stdout (print() output)
             import json
-            discovery_data = json.loads(extract_result.text.strip())
+            stdout_text = ''.join(extract_result.logs.stdout) if extract_result.logs.stdout else ''
+            if not stdout_text:
+                raise RuntimeError("Discovery returned no output")
+            discovery_data = json.loads(stdout_text.strip())
 
             self.discovered_objects = discovery_data['objects']
             self.object_schemas = discovery_data['schemas']
@@ -329,7 +509,7 @@ print(json.dumps(result))
 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse discovery output: {e}")
-            logger.error(f"Output was: {extract_result.text}")
+            logger.error(f"Output was: {extract_("".join(result.logs.stdout) if result.logs.stdout else "")}")
             raise
         except Exception as e:
             logger.error(f"Discovery failed: {str(e)}")
@@ -357,21 +537,49 @@ print(json.dumps(result))
         logger.info(f"Script preview:\n{script[:200]}...")
 
         try:
-            result = self.sandbox.run_code(script)
+            # Execute with PYTHONPATH set to /home/user
+            result = self.sandbox.run_code(
+                script,
+                envs={'PYTHONPATH': '/home/user'}
+            )
+
+            # Get output from stdout (print() output)
+            stdout_text = ''.join(result.logs.stdout) if result.logs.stdout else ''
 
             response = {
                 'success': not bool(result.error),
-                'output': result.text,
+                'output': stdout_text,
                 'error': result.error if result.error else None,
                 'data': None
             }
 
             # Try to parse output as JSON
-            if result.text and not result.error:
+            # Scripts often print descriptive text followed by JSON on the last line(s)
+            if stdout_text and not result.error:
                 try:
                     import json
-                    response['data'] = json.loads(result.text.strip())
-                except json.JSONDecodeError:
+                    import re
+
+                    # Try parsing the entire output first
+                    try:
+                        response['data'] = json.loads(stdout_text.strip())
+                    except json.JSONDecodeError:
+                        # Failed - try to extract JSON from the end of output
+                        # Look for last complete JSON object/array
+                        # Find last occurrence of standalone { or [
+                        lines = stdout_text.strip().split('\n')
+
+                        # Try parsing from the end backwards
+                        for i in range(len(lines) - 1, -1, -1):
+                            try:
+                                # Try to parse from this line to the end
+                                json_text = '\n'.join(lines[i:])
+                                response['data'] = json.loads(json_text)
+                                break  # Success!
+                            except json.JSONDecodeError:
+                                continue
+
+                except Exception:
                     # Output is not JSON, keep as text
                     pass
 
@@ -379,7 +587,7 @@ print(json.dumps(result))
                 logger.error(f"Script execution failed: {result.error}")
             else:
                 logger.info(f"Script executed successfully")
-                logger.info(f"Output: {result.text[:500]}...")
+                logger.info(f"Output: {stdout_text[:500] if stdout_text else '(no output)'}...")
 
             return response
 
@@ -583,7 +791,7 @@ sys.path.insert(0, '/home/user')
 from salesforce_driver import SalesforceClient
 import json
 
-# Initialize client
+# Initialize client (API at localhost:8000 inside sandbox)
 client = SalesforceClient(
     api_url='{self.sandbox_sf_api_url}',
     api_key='{self.sf_api_key}'
@@ -591,12 +799,51 @@ client = SalesforceClient(
 
 # Custom operation based on user prompt: {user_prompt}
 # For this mockup, we'll execute a simple query
-result = client.query("SELECT Id, Name, Email, Company FROM Lead LIMIT 10")
+result = client.query("SELECT Id, FirstName, LastName, Email, Company FROM Lead LIMIT 10")
 
 print(json.dumps(result, indent=2))
 '''
 
         return script, f"Custom operation: {user_prompt}"
+
+    def stop_mock_api(self) -> bool:
+        """
+        Stop the Mock API server running in the sandbox.
+
+        Returns:
+            True if API stopped successfully
+        """
+        if not self.sandbox or not self.api_started:
+            logger.info("No API to stop")
+            return True
+
+        logger.info("Stopping Mock API server...")
+
+        try:
+            # Kill uvicorn process
+            stop_script = """
+import subprocess
+import signal
+import os
+
+# Find and kill uvicorn processes
+result = subprocess.run(['pkill', '-f', 'uvicorn'], capture_output=True)
+print(f"Stopped uvicorn processes")
+"""
+
+            result = self.sandbox.run_code(stop_script)
+
+            if result.error:
+                logger.warning(f"Error stopping API: {result.error}")
+            else:
+                logger.info("API stopped successfully")
+
+            self.api_started = False
+            return True
+
+        except Exception as e:
+            logger.warning(f"Error stopping Mock API: {e}")
+            return False
 
     def close(self):
         """
@@ -605,6 +852,10 @@ print(json.dumps(result, indent=2))
         if self.sandbox:
             logger.info(f"Closing sandbox {self.sandbox.sandbox_id}...")
             try:
+                # Stop API first
+                self.stop_mock_api()
+
+                # Close sandbox
                 self.sandbox.kill()
                 logger.info("Sandbox closed successfully")
             except Exception as e:
@@ -612,6 +863,7 @@ print(json.dumps(result, indent=2))
             finally:
                 self.sandbox = None
                 self.driver_loaded = False
+                self.api_started = False
 
     def __enter__(self):
         """Context manager entry"""
