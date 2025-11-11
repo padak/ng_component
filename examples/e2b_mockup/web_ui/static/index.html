@@ -110,40 +110,95 @@
         </div>
     </header>
 
-    <!-- Main Chat Container -->
-    <div class="flex-1 container mx-auto max-w-4xl px-4 py-6 overflow-hidden flex flex-col">
-        <!-- Chat Messages -->
-        <div id="chat-container" class="flex-1 overflow-y-auto space-y-4 mb-4 bg-white rounded-lg shadow-md p-4">
-            <!-- Welcome Message -->
-            <div class="flex justify-center">
-                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-2xl">
-                    <p class="text-gray-700 text-center">
-                        <span class="font-semibold text-blue-700">Welcome!</span>
-                        Ask me to generate Salesforce integration scripts. For example:
-                        <span class="italic">"Get all leads from the last 30 days"</span> or
-                        <span class="italic">"Find campaigns created this month"</span>
-                    </p>
+    <!-- Main Container with Grid Layout -->
+    <div class="flex-1 grid grid-cols-[1fr_320px] gap-4 px-4 py-6 overflow-hidden">
+
+        <!-- Left Column: Chat -->
+        <div class="flex flex-col overflow-hidden">
+            <!-- Chat Messages -->
+            <div id="chat-container" class="flex-1 overflow-y-auto space-y-4 mb-4 bg-white rounded-lg shadow-md p-4">
+                <!-- Welcome Message -->
+                <div class="flex justify-center">
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-2xl">
+                        <p class="text-gray-700 text-center">
+                            <span class="font-semibold text-blue-700">Welcome!</span>
+                            Ask me to generate Salesforce integration scripts. For example:
+                            <span class="italic">"Get all leads from the last 30 days"</span> or
+                            <span class="italic">"Find campaigns created this month"</span>
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div id="input-area" class="bg-white rounded-lg shadow-md p-4">
+                <div class="flex gap-3">
+                    <input
+                        type="text"
+                        id="message-input"
+                        placeholder="Type your integration request..."
+                        class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        autocomplete="off"
+                    />
+                    <button
+                        id="send-btn"
+                        class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                    >
+                        Send
+                    </button>
                 </div>
             </div>
         </div>
 
-        <!-- Input Area -->
-        <div id="input-area" class="bg-white rounded-lg shadow-md p-4">
-            <div class="flex gap-3">
-                <input
-                    type="text"
-                    id="message-input"
-                    placeholder="Type your integration request..."
-                    class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    autocomplete="off"
-                />
-                <button
-                    id="send-btn"
-                    class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-                >
-                    Send
-                </button>
+        <!-- Right Column: Sidebar -->
+        <div class="flex flex-col gap-4 overflow-y-auto">
+
+            <!-- Agent Status Card -->
+            <div class="bg-white rounded-lg shadow-md p-4">
+                <h3 class="font-semibold text-gray-800 mb-3">Agent Status</h3>
+                <div id="agent-working-indicator" class="hidden mb-3 bg-blue-50 border border-blue-300 rounded-lg p-3">
+                    <div class="flex items-center gap-2">
+                        <div class="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                        <span class="text-sm text-blue-700 font-medium">Agent is working...</span>
+                    </div>
+                </div>
             </div>
+
+            <!-- Token Usage Card -->
+            <div class="bg-white rounded-lg shadow-md p-4">
+                <h3 class="font-semibold text-gray-800 mb-3">Token Usage</h3>
+                <div class="space-y-2 text-sm">
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Input:</span>
+                        <span id="total-input-tokens" class="font-mono font-semibold">0</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Output:</span>
+                        <span id="total-output-tokens" class="font-mono font-semibold">0</span>
+                    </div>
+                    <div class="flex justify-between border-t pt-2">
+                        <span class="text-gray-600">Cache Created:</span>
+                        <span id="total-cache-creation-tokens" class="font-mono text-orange-600 font-semibold">0</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Cache Read:</span>
+                        <span id="total-cache-read-tokens" class="font-mono text-green-600 font-semibold">0</span>
+                    </div>
+                    <div class="flex justify-between border-t pt-2 font-semibold">
+                        <span class="text-gray-800">Total:</span>
+                        <span id="total-all-tokens" class="font-mono">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Information Card -->
+            <div id="system-info-card" class="bg-white rounded-lg shadow-md p-4">
+                <h3 class="font-semibold text-gray-800 mb-3">System Information</h3>
+                <div id="system-info-content" class="space-y-3 text-sm">
+                    <div class="text-gray-500 italic">Initializing...</div>
+                </div>
+            </div>
+
         </div>
     </div>
 
@@ -212,9 +267,13 @@
             switch(data.type) {
                 case 'agent_message':
                     addAgentMessage(data.content);
+                    hideWorkingIndicator();
+                    break;
+                case 'agent_delta':
+                    showWorkingIndicator();
                     break;
                 case 'status':
-                    addStatusMessage(data.content);
+                    updateSystemInfo(data.content);
                     break;
                 case 'tool':
                     addToolUseIndicator(data.tool, data.status);
@@ -224,12 +283,16 @@
                     break;
                 case 'error':
                     addErrorMessage(data.error);
+                    hideWorkingIndicator();
+                    break;
+                case 'usage':
+                    updateTokenUsage(data.usage);
                     break;
                 case 'typing':
                     if (data.is_typing) {
-                        addThinkingIndicator();
+                        showWorkingIndicator();
                     } else {
-                        removeThinkingIndicator();
+                        hideWorkingIndicator();
                     }
                     break;
                 case 'pong':
@@ -380,6 +443,56 @@
             scrollToBottom();
         }
 
+        // Show "Agent is working" indicator
+        function showWorkingIndicator() {
+            const indicator = document.getElementById('agent-working-indicator');
+            if (indicator) {
+                indicator.classList.remove('hidden');
+            }
+        }
+
+        // Hide "Agent is working" indicator
+        function hideWorkingIndicator() {
+            const indicator = document.getElementById('agent-working-indicator');
+            if (indicator) {
+                indicator.classList.add('hidden');
+            }
+        }
+
+        // Update token usage display
+        function updateTokenUsage(usage) {
+            document.getElementById('total-input-tokens').textContent = usage.total_input_tokens.toLocaleString();
+            document.getElementById('total-output-tokens').textContent = usage.total_output_tokens.toLocaleString();
+            document.getElementById('total-cache-creation-tokens').textContent = usage.total_cache_creation_tokens.toLocaleString();
+            document.getElementById('total-cache-read-tokens').textContent = usage.total_cache_read_tokens.toLocaleString();
+
+            // Calculate total (input + output, excluding cache metrics which are already counted in input)
+            const total = usage.total_input_tokens + usage.total_output_tokens;
+            document.getElementById('total-all-tokens').textContent = total.toLocaleString();
+        }
+
+        // Update system information in sidebar
+        function updateSystemInfo(content) {
+            const systemInfoContent = document.getElementById('system-info-content');
+            if (systemInfoContent && content) {
+                // Parse content if it's markdown-formatted system info
+                if (content.includes('E2B Sandbox:') || content.includes('**')) {
+                    // Convert markdown-style bold to HTML
+                    const htmlContent = content
+                        .replace(/\*\*([^*]+)\*\*:/g, '<strong>$1:</strong>')
+                        .replace(/`([^`]+)`/g, '<code class="bg-gray-100 px-1 rounded text-xs">$1</code>')
+                        .split('\n')
+                        .filter(line => line.trim())
+                        .map(line => `<div class="text-gray-700">${line}</div>`)
+                        .join('');
+                    systemInfoContent.innerHTML = htmlContent;
+                } else {
+                    // Regular status message
+                    systemInfoContent.innerHTML = `<div class="text-gray-600 italic">${escapeHtml(content)}</div>`;
+                }
+            }
+        }
+
         // Send message
         function sendMessage() {
             const message = messageInput.value.trim();
@@ -387,6 +500,9 @@
 
             // Add user message to UI
             addUserMessage(message);
+
+            // Show working indicator
+            showWorkingIndicator();
 
             // Send to server
             ws.send(JSON.stringify({

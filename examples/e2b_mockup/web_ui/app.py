@@ -230,15 +230,27 @@ class AgentSession:
 
             # Get model from environment or use default
             self.claude_model = os.getenv('CLAUDE_MODEL', 'claude-sonnet-4-5-20250929')
-            logger.info(f"Claude async client initialized for session {self.session_id} with model {self.claude_model}")
+
+            # Get prompt caching preference (default: enabled)
+            caching_env = os.getenv('ENABLE_PROMPT_CACHING', 'true').lower()
+            self.enable_prompt_caching = caching_env in ('true', '1', 'yes', 'on')
+
+            logger.info(f"Claude async client initialized for session {self.session_id} with model {self.claude_model}, caching={self.enable_prompt_caching}")
         else:
             self.claude_client = None
             self.claude_model = None
+            self.enable_prompt_caching = False
             logger.warning(f"No ANTHROPIC_API_KEY - Claude mode disabled for session {self.session_id}")
 
         # Conversation state for Claude
         self.conversation_history: List[Dict[str, Any]] = []
         self.last_executed_script: Optional[str] = None
+
+        # Token usage tracking
+        self.total_input_tokens = 0
+        self.total_output_tokens = 0
+        self.total_cache_creation_tokens = 0
+        self.total_cache_read_tokens = 0
 
         logger.info(f"Created session {self.session_id}")
 
@@ -460,17 +472,24 @@ class AgentSession:
                 # Create streaming request
                 response_text = ""
 
-                async with self.claude_client.messages.stream(
-                    model=self.claude_model,
-                    max_tokens=4096,
-                    # Enable prompt caching for system prompt (90% cost reduction on cached tokens)
-                    system=[
+                # Prepare system prompt (with or without caching)
+                if self.enable_prompt_caching:
+                    # Enable prompt caching (90% cost reduction on cached tokens)
+                    system_param = [
                         {
                             "type": "text",
                             "text": CLAUDE_SYSTEM_PROMPT,
                             "cache_control": {"type": "ephemeral"}
                         }
-                    ],
+                    ]
+                else:
+                    # Standard system prompt (no caching)
+                    system_param = CLAUDE_SYSTEM_PROMPT
+
+                async with self.claude_client.messages.stream(
+                    model=self.claude_model,
+                    max_tokens=4096,
+                    system=system_param,
                     messages=self.conversation_history,
                     tools=CLAUDE_TOOLS
                 ) as stream:
@@ -492,6 +511,34 @@ class AgentSession:
 
                     # Get final message
                     final_message = await stream.get_final_message()
+
+                # Track token usage
+                if hasattr(final_message, 'usage') and final_message.usage:
+                    usage = final_message.usage
+                    self.total_input_tokens += usage.input_tokens
+                    self.total_output_tokens += usage.output_tokens
+
+                    # Track cache metrics (if available)
+                    cache_creation = getattr(usage, 'cache_creation_input_tokens', 0) or 0
+                    cache_read = getattr(usage, 'cache_read_input_tokens', 0) or 0
+                    self.total_cache_creation_tokens += cache_creation
+                    self.total_cache_read_tokens += cache_read
+
+                    # Send usage update to frontend
+                    await self.websocket.send_json({
+                        "type": "usage",
+                        "usage": {
+                            "input_tokens": usage.input_tokens,
+                            "output_tokens": usage.output_tokens,
+                            "cache_creation_tokens": cache_creation,
+                            "cache_read_tokens": cache_read,
+                            "total_input_tokens": self.total_input_tokens,
+                            "total_output_tokens": self.total_output_tokens,
+                            "total_cache_creation_tokens": self.total_cache_creation_tokens,
+                            "total_cache_read_tokens": self.total_cache_read_tokens
+                        },
+                        "timestamp": datetime.now().isoformat()
+                    })
 
                 # Check if Claude wants to use tools
                 if final_message.stop_reason == "tool_use":
