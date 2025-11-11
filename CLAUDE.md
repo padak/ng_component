@@ -26,7 +26,11 @@ ng_component/
     ├── mock_api/              # FastAPI mock Salesforce (uploaded to sandbox)
     ├── salesforce_driver/     # Python client for agents (uploaded to sandbox)
     ├── test_data/             # DuckDB with 180 test records (uploaded to sandbox)
-    └── test_scenarios/        # Integration test scenarios
+    ├── test_scenarios/        # Integration test scenarios
+    └── web_ui/                # Web UI with Claude SDK integration
+        ├── app.py             # FastAPI + WebSocket backend with Claude Sonnet 4.5
+        ├── static/index.html  # Chat interface frontend
+        └── CLAUDE_INTEGRATION_SUMMARY.md  # Integration documentation
 ```
 
 ## Key Architecture Concepts
@@ -84,6 +88,11 @@ python setup.py
 ### Running Components
 
 ```bash
+# Run Web UI with Claude SDK (RECOMMENDED for interactive use)
+cd examples/e2b_mockup/web_ui
+uvicorn app:app --reload --port 8080
+# Visit http://localhost:8080/static/
+
 # Run E2B integration tests (AgentExecutor handles Mock API automatically)
 cd examples/e2b_mockup
 python test_executor.py
@@ -114,12 +123,16 @@ python test_soql_parser.py
 Required in `examples/e2b_mockup/.env`:
 
 ```bash
-E2B_API_KEY=your_e2b_api_key      # Required for E2B sandboxes
-SF_API_URL=http://localhost:8000   # Used inside sandbox (always localhost:8000)
-SF_API_KEY=test_key_12345          # Mock API key
+E2B_API_KEY=your_e2b_api_key        # Required for E2B sandboxes
+ANTHROPIC_API_KEY=your_anthropic_key # Required for Claude SDK in Web UI
+SF_API_URL=http://localhost:8000     # Used inside sandbox (always localhost:8000)
+SF_API_KEY=test_key_12345            # Mock API key
 ```
 
-**Note:** `SF_API_URL` should always be `http://localhost:8000` because this URL is used by scripts running inside the E2B sandbox to connect to the Mock API also running inside the same sandbox.
+**Notes:**
+- `SF_API_URL` should always be `http://localhost:8000` because this URL is used by scripts running inside the E2B sandbox to connect to the Mock API also running inside the same sandbox
+- `ANTHROPIC_API_KEY` is only needed for the Web UI. If not set, Web UI falls back to pattern-matching mode
+- Get your Anthropic API key from: https://console.anthropic.com/
 
 ## Architecture Flow
 
@@ -149,12 +162,56 @@ Results → AgentExecutor → User
 - No network communication between host and sandbox needed
 - Scripts use `localhost:8000` to connect to API on same machine
 
+## Web UI with Claude SDK Integration
+
+The Web UI (`examples/e2b_mockup/web_ui/`) demonstrates the production-ready vision of the system:
+
+**Features:**
+- **Claude Sonnet 4.5 Integration**: Natural language query understanding with streaming responses
+- **Tool Use**: Agent uses 4 tools for dynamic interaction:
+  - `discover_objects` - List available Salesforce objects
+  - `get_object_fields` - Get schema for specific object
+  - `execute_salesforce_query` - Generate and execute Python scripts on-the-fly
+  - `show_last_script` - Display generated code
+- **Discovery-First**: Agent discovers schema before generating queries (no hardcoded field names!)
+- **Streaming**: Token-by-token response streaming for better UX
+- **Conversational**: Multi-turn conversations with full context preservation
+- **WebSocket**: Real-time bidirectional communication
+
+**Architecture:**
+```
+User Query (WebSocket)
+    ↓
+Web UI Backend (FastAPI + Claude SDK)
+    ↓
+Claude Sonnet 4.5 (with tools)
+    ↓
+Tool Execution → AgentExecutor → E2B Sandbox
+    ↓
+Results streamed back to user
+```
+
+**Starting the Web UI:**
+```bash
+cd examples/e2b_mockup/web_ui
+uvicorn app:app --reload --port 8080
+# Visit: http://localhost:8080/static/
+```
+
+**Example Queries:**
+- "What data do you have?" → Discovers available objects
+- "Show me all leads" → Generates and executes query
+- "Get leads from last 30 days" → Adds date filtering
+- "Show me the code" → Displays generated Python script
+
+See `web_ui/CLAUDE_INTEGRATION_SUMMARY.md` for complete integration documentation.
+
 ## Known Limitations (By Design)
 
 This is a proof-of-concept mockup:
 
 1. **SOQL Parser**: Basic only (SELECT, WHERE, AND, dates). Date comparisons need quotes: `'2024-01-01'` not `2024-01-01`
-2. **Templates**: Pre-built scripts. Production would use Claude Sonnet 4.5 to generate dynamically
+2. **Mock Data**: Test database has 180 records across 4 tables (Account, Lead, Opportunity, Campaign)
 3. **Single Driver**: Only Salesforce mock. Production supports multiple systems
 4. **Mock API**: Simulated data. Production connects to real APIs
 
@@ -251,6 +308,9 @@ Expected results:
 ✓ Mock API starts inside sandbox on localhost:8000
 ✓ Driver queries API successfully from within sandbox
 ✓ Complete flow: Upload → Start API → Query → Return results
+✓ Web UI with Claude SDK: Natural language → Tool use → Script generation → Execution
+✓ Streaming responses with real-time tool execution status
+✓ Campaign object properly mapped (Account, Lead, Opportunity, Campaign all working)
 ```
 
 ## What Success Looks Like
@@ -310,10 +370,13 @@ print(result.text)  # 'Hello'
 
 ## Next Steps for Production
 
-1. Replace script templates with Claude Sonnet 4.5 API for dynamic generation
+1. ✅ ~~Replace script templates with Claude Sonnet 4.5 API for dynamic generation~~ → **DONE** (Web UI)
 2. Add more drivers (PostgreSQL, HubSpot, REST APIs)
 3. Implement MCP server registration for drivers
 4. Enhance SOQL parser (OR, IN, NOT, subqueries)
-5. Add caching layer for discovery results
-6. Implement proper error handling and retry logic
+5. Add caching layer for discovery results (prompt caching for 90% cost reduction)
+6. ✅ ~~Implement proper error handling~~ → **DONE** (API overload, rate limits, auth errors)
 7. Add monitoring and logging for production use
+8. Implement retry logic with exponential backoff for API errors
+9. Add user authentication and session persistence
+10. Create frontend for managing multiple data source connections
