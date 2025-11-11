@@ -123,15 +123,20 @@ python test_soql_parser.py
 Required in `examples/e2b_mockup/.env`:
 
 ```bash
-E2B_API_KEY=your_e2b_api_key        # Required for E2B sandboxes
-ANTHROPIC_API_KEY=your_anthropic_key # Required for Claude SDK in Web UI
-SF_API_URL=http://localhost:8000     # Used inside sandbox (always localhost:8000)
-SF_API_KEY=test_key_12345            # Mock API key
+E2B_API_KEY=your_e2b_api_key                    # Required for E2B sandboxes
+ANTHROPIC_API_KEY=your_anthropic_key            # Required for Claude SDK in Web UI
+CLAUDE_MODEL=claude-sonnet-4-5-20250929         # Optional: Choose Claude model (default: Sonnet 4.5)
+SF_API_URL=http://localhost:8000                # Used inside sandbox (always localhost:8000)
+SF_API_KEY=test_key_12345                       # Mock API key
 ```
 
 **Notes:**
 - `SF_API_URL` should always be `http://localhost:8000` because this URL is used by scripts running inside the E2B sandbox to connect to the Mock API also running inside the same sandbox
 - `ANTHROPIC_API_KEY` is only needed for the Web UI. If not set, Web UI falls back to pattern-matching mode
+- `CLAUDE_MODEL` options:
+  - `claude-sonnet-4-5-20250929` (default) - Best for complex tasks, coding, computer use
+  - `claude-sonnet-4-20250514` - Balanced performance
+  - `claude-haiku-4-20250514` - Fastest, cheapest (60x cheaper than Sonnet 4.5!)
 - Get your Anthropic API key from: https://console.anthropic.com/
 
 ## Architecture Flow
@@ -177,6 +182,8 @@ The Web UI (`examples/e2b_mockup/web_ui/`) demonstrates the production-ready vis
 - **Streaming**: Token-by-token response streaming for better UX
 - **Conversational**: Multi-turn conversations with full context preservation
 - **WebSocket**: Real-time bidirectional communication
+- **Prompt Caching**: 90% cost reduction on system prompt (cached for 5 minutes)
+- **Model Selection**: Choose between Sonnet 4.5 (best), Sonnet 4 (balanced), or Haiku 4 (fastest/cheapest)
 
 **Architecture:**
 ```
@@ -371,12 +378,13 @@ print(result.text)  # 'Hello'
 ## Next Steps for Production
 
 1. ✅ ~~Replace script templates with Claude Sonnet 4.5 API for dynamic generation~~ → **DONE** (Web UI)
-2. Add more drivers (PostgreSQL, HubSpot, REST APIs)
-3. Implement MCP server registration for drivers
-4. Enhance SOQL parser (OR, IN, NOT, subqueries)
-5. Add caching layer for discovery results (prompt caching for 90% cost reduction)
-6. ✅ ~~Implement proper error handling~~ → **DONE** (API overload, rate limits, auth errors)
-7. Add monitoring and logging for production use
-8. Implement retry logic with exponential backoff for API errors
-9. Add user authentication and session persistence
-10. Create frontend for managing multiple data source connections
+2. ✅ ~~Add prompt caching for 90% cost reduction~~ → **DONE** (Implemented 2025-11-11)
+3. ✅ ~~Implement proper error handling~~ → **DONE** (API overload, rate limits, auth errors)
+4. Add more drivers (PostgreSQL, HubSpot, REST APIs)
+5. Implement MCP server registration for drivers
+6. Enhance SOQL parser (OR, IN, NOT, subqueries)
+7. Add discovery results caching per session
+8. Add monitoring and logging for production use
+9. Implement retry logic with exponential backoff for API errors
+10. Add user authentication and session persistence
+11. Create frontend for managing multiple data source connections

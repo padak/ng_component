@@ -16,6 +16,13 @@ Create a `.env` file in `examples/e2b_mockup/`:
 # Required for E2B sandboxes
 E2B_API_KEY=your_e2b_api_key_here
 
+# Required for Claude-powered agent (get from https://console.anthropic.com/)
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+
+# Optional: Choose Claude model (default: claude-sonnet-4-5-20250929)
+# Options: claude-sonnet-4-5-20250929, claude-sonnet-4-20250514, claude-haiku-4-20250514
+CLAUDE_MODEL=claude-sonnet-4-5-20250929
+
 # Used inside sandbox (always localhost:8000)
 SF_API_URL=http://localhost:8000
 SF_API_KEY=test_key_12345

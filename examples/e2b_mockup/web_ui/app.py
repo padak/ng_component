@@ -227,9 +227,13 @@ class AgentSession:
         anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
         if anthropic_api_key:
             self.claude_client = anthropic.AsyncAnthropic(api_key=anthropic_api_key)
-            logger.info(f"Claude async client initialized for session {self.session_id}")
+
+            # Get model from environment or use default
+            self.claude_model = os.getenv('CLAUDE_MODEL', 'claude-sonnet-4-5-20250929')
+            logger.info(f"Claude async client initialized for session {self.session_id} with model {self.claude_model}")
         else:
             self.claude_client = None
+            self.claude_model = None
             logger.warning(f"No ANTHROPIC_API_KEY - Claude mode disabled for session {self.session_id}")
 
         # Conversation state for Claude
@@ -457,9 +461,16 @@ class AgentSession:
                 response_text = ""
 
                 async with self.claude_client.messages.stream(
-                    model="claude-sonnet-4-5-20250929",
+                    model=self.claude_model,
                     max_tokens=4096,
-                    system=CLAUDE_SYSTEM_PROMPT,
+                    # Enable prompt caching for system prompt (90% cost reduction on cached tokens)
+                    system=[
+                        {
+                            "type": "text",
+                            "text": CLAUDE_SYSTEM_PROMPT,
+                            "cache_control": {"type": "ephemeral"}
+                        }
+                    ],
                     messages=self.conversation_history,
                     tools=CLAUDE_TOOLS
                 ) as stream:
