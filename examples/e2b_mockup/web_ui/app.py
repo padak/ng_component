@@ -30,6 +30,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from dotenv import load_dotenv
+import anthropic
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -64,55 +65,147 @@ app.add_middleware(
 )
 
 
-# System prompt for the agent
-AGENT_SYSTEM_PROMPT = """You are a helpful AI assistant that helps users query and analyze Salesforce data.
+# Claude SDK Configuration
+CLAUDE_SYSTEM_PROMPT = """You are an expert Salesforce integration assistant that helps users query and analyze Salesforce data through an E2B sandbox environment.
 
-You have access to a Salesforce integration system through an E2B sandbox. You can:
+**Your Capabilities:**
 
-1. **Discover Objects**: List available Salesforce objects (Lead, Campaign, CampaignMember, etc.)
-2. **Discover Fields**: Get field schemas for any object to understand available data
-3. **Query Data**: Execute SOQL queries to retrieve data based on user requests
-4. **Analyze Data**: Process and summarize query results
+You have access to four powerful tools that allow you to interact with Salesforce:
 
-**Available Capabilities:**
+1. **discover_objects**: Lists all available Salesforce objects (Lead, Campaign, CampaignMember, etc.)
+2. **get_object_fields**: Gets the complete field schema for a specific object
+3. **execute_salesforce_query**: Generates and executes Python scripts to query Salesforce data
+4. **show_last_script**: Shows the Python code from the most recent query execution
 
-- Get recent leads (e.g., "Get leads from last 30 days")
-- Get leads by status (e.g., "Get all New leads")
-- Get campaign with leads (e.g., "Get leads for Summer Campaign")
-- Get all leads with filtering
-- Custom SOQL queries
-- Discover available objects and their schemas
+**Discovery-First Approach:**
 
-**Discovery-First Pattern:**
+When a user asks about data you're unfamiliar with, ALWAYS follow this pattern:
 
-When the user asks about data you're unfamiliar with:
-1. First discover what objects are available using list_objects()
-2. Then discover what fields are available using get_fields(object_name)
-3. Generate appropriate queries based on discovered schema
-4. Execute and return results
+1. Use `discover_objects` to see what objects are available
+2. Use `get_object_fields` to understand the schema of relevant objects
+3. Use `execute_salesforce_query` to generate and run the appropriate query
+4. Present results in a clear, conversational manner
 
-**Response Guidelines:**
+**Query Generation Guidelines:**
+
+When using `execute_salesforce_query`:
+- The `description` parameter should explain what data you're retrieving
+- The `python_script` parameter must contain complete Python code
+- You will write scripts that use the SalesforceClient from the salesforce_driver
+- Scripts must use api_url='http://localhost:8000' and api_key='<api_key_here>' (placeholder)
+- Always handle errors gracefully with try/except blocks
+- Return results as JSON for easy parsing
+
+**Script Template Structure:**
+
+Every script you generate should follow this pattern:
+
+```python
+import sys
+sys.path.insert(0, '/home/user')
+from salesforce_driver import SalesforceClient
+import json
+
+# Initialize client
+client = SalesforceClient(
+    api_url='http://localhost:8000',
+    api_key='<api_key_here>'
+)
+
+try:
+    # Your query logic here
+    results = client.query("SELECT ... FROM ...")
+
+    # Format and return as JSON
+    output = {
+        'count': len(results),
+        'data': results
+    }
+    print(json.dumps(output, indent=2))
+
+except Exception as e:
+    error = {'error': str(e)}
+    print(json.dumps(error, indent=2))
+```
+
+**Response Style:**
 
 - Be conversational and helpful
-- Explain what you're doing when executing queries
+- Explain what you're doing when executing tools
 - Provide summaries of results, not just raw data
-- Ask clarifying questions if the request is ambiguous
-- Suggest related queries the user might be interested in
+- Suggest follow-up queries that might be useful
+- When showing data, highlight key insights
 
 **Examples:**
 
 User: "Show me recent leads"
-You: "I'll get the leads created in the last 30 days for you. Let me query that data..."
-[Execute query]
-"I found X leads created in the last 30 days. Here's a summary..."
+You: "I'll query the leads created recently. Let me fetch that data..."
+[Use execute_salesforce_query with script to get leads from last 30 days]
+"I found 45 leads created in the last 30 days. The most common status is 'New' with 28 leads..."
 
-User: "What data do you have access to?"
+User: "What data can I access?"
 You: "Let me discover what Salesforce objects are available..."
-[Run discovery]
-"I have access to Lead, Campaign, and CampaignMember objects. Would you like to explore any of these?"
+[Use discover_objects]
+"I have access to 3 objects: Lead (with 15 fields), Campaign (with 12 fields), and CampaignMember (with 8 fields). Would you like to explore any of these?"
 
-Always be helpful, informative, and proactive in assisting the user with their data needs.
+User: "Show me the code you used"
+You: "Here's the Python script I executed..."
+[Use show_last_script]
 """
+
+# Claude Tools Configuration
+CLAUDE_TOOLS = [
+    {
+        "name": "discover_objects",
+        "description": "Discovers all available Salesforce objects and their schemas. Use this when you need to understand what data is available in the Salesforce instance. Returns a list of object names and their field counts.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    {
+        "name": "get_object_fields",
+        "description": "Gets the complete field schema for a specific Salesforce object. Use this to understand what fields are available before constructing queries. Returns detailed field information including types, labels, and requirements.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "object_name": {
+                    "type": "string",
+                    "description": "The name of the Salesforce object (e.g., 'Lead', 'Campaign', 'CampaignMember')"
+                }
+            },
+            "required": ["object_name"]
+        }
+    },
+    {
+        "name": "execute_salesforce_query",
+        "description": "Generates and executes a Python script to query Salesforce data. You should generate the complete Python code that uses the SalesforceClient to perform the desired operation. The script will be executed in an E2B sandbox with access to the Salesforce driver.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "description": "Human-readable description of what this query does (e.g., 'Get leads from last 30 days')"
+                },
+                "python_script": {
+                    "type": "string",
+                    "description": "Complete Python script to execute. Must import SalesforceClient, initialize it with api_url='http://localhost:8000' and api_key='<api_key_here>', execute queries, and print results as JSON."
+                }
+            },
+            "required": ["description", "python_script"]
+        }
+    },
+    {
+        "name": "show_last_script",
+        "description": "Shows the Python code from the most recently executed query. Use this when the user asks to see the code, script, or wants to know how something was done.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    }
+]
 
 
 class AgentSession:
@@ -126,7 +219,23 @@ class AgentSession:
         self.websocket = websocket
         self.executor: Optional[AgentExecutor] = None
         self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+
+        # Legacy message history (keep for backward compatibility)
         self.message_history: List[Dict[str, str]] = []
+
+        # Claude SDK integration (use AsyncAnthropic for async/await support)
+        anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
+        if anthropic_api_key:
+            self.claude_client = anthropic.AsyncAnthropic(api_key=anthropic_api_key)
+            logger.info(f"Claude async client initialized for session {self.session_id}")
+        else:
+            self.claude_client = None
+            logger.warning(f"No ANTHROPIC_API_KEY - Claude mode disabled for session {self.session_id}")
+
+        # Conversation state for Claude
+        self.conversation_history: List[Dict[str, Any]] = []
+        self.last_executed_script: Optional[str] = None
+
         logger.info(f"Created session {self.session_id}")
 
     async def initialize(self):
@@ -181,15 +290,304 @@ class AgentSession:
             await self.send_error(error_msg)
             return False
 
+    async def execute_tool_call(self, tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute a tool call from Claude and return the result.
+
+        Args:
+            tool_name: Name of the tool to execute
+            tool_input: Arguments passed to the tool
+
+        Returns:
+            Dictionary with tool execution results
+        """
+        try:
+            # Send tool status to frontend
+            await self.send_tool_status(tool_name, "running")
+
+            loop = asyncio.get_event_loop()
+
+            if tool_name == "discover_objects":
+                # Run discovery
+                result = await loop.run_in_executor(
+                    None,
+                    self.executor.run_discovery
+                )
+
+                # Format for Claude
+                objects_summary = []
+                for obj_name in result.get('objects', []):
+                    schema = result.get('schemas', {}).get(obj_name, {})
+                    field_count = len(schema.get('fields', []))
+                    objects_summary.append({
+                        'name': obj_name,
+                        'field_count': field_count
+                    })
+
+                tool_result = {
+                    'success': True,
+                    'objects': objects_summary,
+                    'total_count': len(result.get('objects', []))
+                }
+
+            elif tool_name == "get_object_fields":
+                object_name = tool_input['object_name']
+
+                # Generate and execute discovery script
+                script = ScriptTemplates.discover_schema(
+                    api_url=self.executor.sandbox_sf_api_url,
+                    api_key=self.executor.sf_api_key,
+                    object_name=object_name
+                )
+
+                exec_result = await loop.run_in_executor(
+                    None,
+                    lambda: self.executor.execute_script(
+                        script,
+                        f"Get {object_name} schema"
+                    )
+                )
+
+                if exec_result['success'] and exec_result['data']:
+                    schema = exec_result['data'].get('schema', {})
+                    tool_result = {
+                        'success': True,
+                        'object_name': object_name,
+                        'schema': schema
+                    }
+                else:
+                    tool_result = {
+                        'success': False,
+                        'error': exec_result.get('error', 'Unknown error')
+                    }
+
+            elif tool_name == "execute_salesforce_query":
+                description = tool_input['description']
+                python_script = tool_input['python_script']
+
+                # Replace placeholder API key in the script
+                python_script = python_script.replace(
+                    '<api_key_here>',
+                    self.executor.sf_api_key
+                )
+
+                # Store the script for show_last_script
+                self.last_executed_script = python_script
+
+                # Execute the script
+                exec_result = await loop.run_in_executor(
+                    None,
+                    lambda: self.executor.execute_script(python_script, description)
+                )
+
+                tool_result = {
+                    'success': exec_result['success'],
+                    'description': description,
+                    'output': exec_result.get('output', ''),
+                    'data': exec_result.get('data'),
+                    'error': exec_result.get('error')
+                }
+
+                # Also send result to frontend
+                if exec_result['success']:
+                    await self.send_result({
+                        'success': True,
+                        'data': exec_result.get('data'),
+                        'description': description
+                    })
+
+            elif tool_name == "show_last_script":
+                if self.last_executed_script:
+                    tool_result = {
+                        'success': True,
+                        'script': self.last_executed_script
+                    }
+                else:
+                    tool_result = {
+                        'success': False,
+                        'message': 'No script has been executed yet in this session.'
+                    }
+
+            else:
+                tool_result = {
+                    'success': False,
+                    'error': f'Unknown tool: {tool_name}'
+                }
+
+            # Send completion status
+            await self.send_tool_status(
+                tool_name,
+                "completed" if tool_result.get('success') else "failed"
+            )
+
+            return tool_result
+
+        except Exception as e:
+            logger.error(f"Tool execution failed: {str(e)}", exc_info=True)
+            await self.send_tool_status(tool_name, "failed")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+    async def process_message_with_claude(self, user_message: str):
+        """
+        Process user message using Claude API with streaming and tool support.
+
+        This replaces the pattern-matching logic with intelligent agent behavior.
+        """
+        try:
+            # Add user message to history
+            self.conversation_history.append({
+                "role": "user",
+                "content": user_message
+            })
+
+            # Send typing indicator
+            await self.send_typing(True)
+
+            # Call Claude API with streaming
+            max_iterations = 5  # Prevent infinite loops
+            iteration = 0
+
+            while iteration < max_iterations:
+                iteration += 1
+
+                # Create streaming request
+                response_text = ""
+
+                async with self.claude_client.messages.stream(
+                    model="claude-sonnet-4-5-20250929",
+                    max_tokens=4096,
+                    system=CLAUDE_SYSTEM_PROMPT,
+                    messages=self.conversation_history,
+                    tools=CLAUDE_TOOLS
+                ) as stream:
+
+                    async for event in stream:
+
+                        # Handle content block delta (streaming text)
+                        if event.type == "content_block_delta":
+                            if event.delta.type == "text_delta":
+                                text_delta = event.delta.text
+                                response_text += text_delta
+
+                                # Stream to WebSocket
+                                await self.websocket.send_json({
+                                    "type": "agent_delta",
+                                    "delta": text_delta,
+                                    "timestamp": datetime.now().isoformat()
+                                })
+
+                    # Get final message
+                    final_message = await stream.get_final_message()
+
+                # Check if Claude wants to use tools
+                if final_message.stop_reason == "tool_use":
+
+                    # Execute each tool call
+                    tool_results = []
+
+                    for block in final_message.content:
+                        if block.type == "tool_use":
+                            tool_name = block.name
+                            tool_input = block.input
+                            tool_id = block.id
+
+                            logger.info(f"Executing tool: {tool_name}")
+
+                            # Execute tool
+                            tool_result = await self.execute_tool_call(
+                                tool_name,
+                                tool_input
+                            )
+
+                            tool_results.append({
+                                "type": "tool_result",
+                                "tool_use_id": tool_id,
+                                "content": json.dumps(tool_result)
+                            })
+
+                    # Add assistant message and tool results to history
+                    self.conversation_history.append({
+                        "role": "assistant",
+                        "content": final_message.content
+                    })
+
+                    self.conversation_history.append({
+                        "role": "user",
+                        "content": tool_results
+                    })
+
+                    # Continue loop to get Claude's response to tool results
+                    continue
+
+                else:
+                    # No more tools - final response received
+
+                    # Add complete response to history
+                    if response_text:
+                        self.conversation_history.append({
+                            "role": "assistant",
+                            "content": response_text
+                        })
+
+                        # Send complete message
+                        await self.send_agent_message(response_text)
+
+                    break
+
+            await self.send_typing(False)
+
+        except anthropic.APIStatusError as e:
+            # Handle specific API errors with user-friendly messages
+            error_type = getattr(e, 'type', None) or (e.response.json() if hasattr(e, 'response') else {}).get('error', {}).get('type')
+
+            if 'overloaded' in str(e).lower() or error_type == 'overloaded_error':
+                user_msg = (
+                    "⚠️ Claude API is temporarily overloaded (high traffic). "
+                    "Please wait 30-60 seconds and try again. Your session is still active."
+                )
+            elif e.status_code == 429:
+                user_msg = "⚠️ Rate limit reached. Please wait a moment and try again."
+            elif e.status_code == 401:
+                user_msg = "❌ Authentication error. Please check your ANTHROPIC_API_KEY."
+            else:
+                user_msg = f"❌ Claude API error ({e.status_code}): {str(e)}"
+
+            logger.warning(f"Claude API error: {str(e)}")
+            await self.send_error(user_msg)
+            await self.send_typing(False)
+
+        except Exception as e:
+            logger.error(f"Claude processing failed: {str(e)}", exc_info=True)
+            await self.send_error(f"Error processing message: {str(e)}")
+            await self.send_typing(False)
+
     async def process_message(self, user_message: str):
         """
-        Process a user message and execute the appropriate action.
+        Process a user message - routes to Claude or pattern matching fallback.
 
-        This simulates what an AI agent would do:
-        1. Parse user intent
-        2. Determine appropriate action (query, discovery, etc.)
-        3. Execute in E2B sandbox
-        4. Stream results back
+        If ANTHROPIC_API_KEY is available, uses Claude SDK for intelligent responses.
+        Otherwise falls back to pattern-matching logic.
+        """
+        # Check if Claude is available
+        if self.claude_client:
+            try:
+                await self.process_message_with_claude(user_message)
+                return
+            except Exception as e:
+                logger.warning(f"Claude failed, falling back to pattern matching: {e}")
+                # Fall through to pattern matching
+
+        # Pattern matching fallback
+        await self.process_message_with_patterns(user_message)
+
+    async def process_message_with_patterns(self, user_message: str):
+        """
+        Process message using pattern matching (legacy/fallback mode).
+
+        Original implementation that matches user messages to pre-defined templates.
         """
         try:
             # Add to history

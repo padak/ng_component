@@ -11,10 +11,12 @@ OBJECT_TABLE_MAP = {
     "Lead": "leads",
     "Opportunity": "opportunities",
     "Account": "accounts",
-    "Contact": "contacts",
-    "Case": "cases",
-    "Task": "tasks",
-    "Event": "events",
+    "Campaign": "campaigns",
+    # Note: Contact, Case, Task, Event tables don't exist in current schema
+    # "Contact": "contacts",
+    # "Case": "cases",
+    # "Task": "tasks",
+    # "Event": "events",
 }
 
 # Reverse mapping
