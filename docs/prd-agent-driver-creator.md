@@ -184,8 +184,8 @@ Agent: "✅ All checks passed! Driver ready for production."
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  Driver Creator Web UI (similar to web_ui/)             │
-│                                                          │
-│  Components:                                             │
+│                                                         │
+│  Components:                                            │
 │  - Chat interface (user ↔ agent conversation)           │
 │  - Code preview (generated driver files)                │
 │  - TODO tracker (what needs human input)                │
@@ -194,8 +194,8 @@ Agent: "✅ All checks passed! Driver ready for production."
                             ↓
 ┌─────────────────────────────────────────────────────────┐
 │  Driver Creator Agent (Claude Sonnet 4.5)               │
-│                                                          │
-│  Tools:                                                  │
+│                                                         │
+│  Tools:                                                 │
 │  1. research_api - Fetch docs, analyze structure        │
 │  2. evaluate_complexity - Assess automation feasibility │
 │  3. generate_driver_scaffold - Create files             │
@@ -204,17 +204,17 @@ Agent: "✅ All checks passed! Driver ready for production."
 └─────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────┐
-│  Code Generation Engine                                  │
-│                                                          │
+│  Code Generation Engine                                 │
+│                                                         │
 │  - Template Engine (Jinja2)                             │
 │  - Driver Design v2.0 templates                         │
-│  - Example generators                                    │
-│  - Test generators                                       │
+│  - Example generators                                   │
+│  - Test generators                                      │
 └─────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────┐
-│  Output: driver_name/                                    │
-│  ├── __init__.py                                         │
+│  Output: driver_name/                                   │
+│  ├── __init__.py                                        │
 │  ├── client.py           # Generated + TODOs            │
 │  ├── exceptions.py       # Generated                    │
 │  ├── README.md           # Generated                    │
