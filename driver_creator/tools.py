@@ -685,7 +685,8 @@ def test_driver_in_e2b(
     try:
         # Step 1: Create E2B sandbox
         print(f"Creating E2B sandbox for testing {driver_name}...")
-        sandbox = Sandbox.create(api_key=e2b_api_key)
+        # Note: E2B SDK reads E2B_API_KEY from environment automatically
+        sandbox = Sandbox.create(timeout=120)  # 2 minutes for driver tests
         sandbox_id = sandbox.sandbox_id
         print(f"Sandbox created: {sandbox_id}")
 
