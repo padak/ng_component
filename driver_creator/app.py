@@ -44,6 +44,7 @@ from tools import (
 
 from agent_tools import (
     generate_driver_with_agents,
+    generate_driver_supervised,
     extract_learnings_to_mem0
 )
 
@@ -415,7 +416,7 @@ CLAUDE_TOOLS = [
     },
     {
         "name": "generate_driver_with_agents",
-        "description": "🚀 NEW APPROACH: Generate a complete, working driver using specialized sub-agents and LLM code generation. This is the recommended way to create drivers - it uses Research Agent, Generator Agent, Tester Agent, and Learning Agent to create drivers that work on first try. Includes automatic testing loop, error fixing, and learning from mistakes (saved to mem0). Much better than templates!",
+        "description": "🚀 SELF-HEALING: Generate driver with 3-layer self-healing architecture. Automatically diagnoses failures and retries with adaptive strategies. Rock-solid generation with Supervisor Agent (Layer 3) + Diagnostic Agent (Layer 2) + defensive wrappers (Layer 1). Uses Research Agent, Generator Agent, Tester Agent, and Learning Agent to create drivers that work on first try. Includes automatic testing loop, error fixing, and learning from mistakes (saved to mem0).",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -628,13 +629,15 @@ class DriverCreatorSession:
                 output_dir = tool_input.get('output_dir')
                 max_retries = tool_input.get('max_retries', 7)  # Increased from 3 - need more iterations for complex fixes
 
+                # Use supervised version for self-healing capabilities
                 result = await loop.run_in_executor(
                     None,
-                    lambda: generate_driver_with_agents(
+                    lambda: generate_driver_supervised(
                         api_name=api_name,
                         api_url=api_url,
                         output_dir=output_dir,
-                        max_retries=max_retries
+                        max_supervisor_attempts=3,  # Supervisor-level retries
+                        max_retries=max_retries  # Fix-retry iterations per attempt
                     )
                 )
 

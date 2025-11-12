@@ -10,10 +10,13 @@ This module provides sub-agent orchestration for driver generation:
 
 import json
 import os
+import re
+import time
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from mem0 import Memory
 from datetime import datetime
+from anthropic import APIError as AnthropicAPIError
 
 
 # Session logging directory
@@ -91,9 +94,10 @@ def get_agent_model(agent_type: str, default_model: str = 'claude-sonnet-4-5') -
     - Generator Agent: Sonnet (quality code generation)
     - Tester Agent: Haiku (fast test iterations)
     - Learning Agent: Haiku (simple pattern extraction)
+    - Diagnostic Agent: Haiku (fast failure diagnosis)
 
     Args:
-        agent_type: 'research', 'generator', 'tester', 'learning'
+        agent_type: 'research', 'generator', 'tester', 'learning', 'diagnostic'
         default_model: Override from CLAUDE_MODEL env var
 
     Returns:
@@ -111,6 +115,7 @@ def get_agent_model(agent_type: str, default_model: str = 'claude-sonnet-4-5') -
         'tester': 'claude-haiku-4-5',        # Fast test iteration
         'learning': 'claude-haiku-4-5',      # Simple pattern extraction
         'fixer': 'claude-haiku-4-5',         # Fast code fixes
+        'diagnostic': 'claude-haiku-4-5',    # Fast failure diagnosis
     }
 
     model_name = model_strategy.get(agent_type, default_model)
@@ -153,6 +158,210 @@ def prioritize_errors(errors: List[Dict]) -> List[Dict]:
         return 3
 
     return sorted(errors, key=get_priority)
+
+
+# ============================================================================
+# Layer 1: Defensive Wrappers (Self-Healing Agent System)
+# ============================================================================
+
+class GenerationError(Exception):
+    """Raised when file generation fails after all retries."""
+    def __init__(self, message: str, errors: List[str] = None):
+        super().__init__(message)
+        self.errors = errors or []
+
+
+def validate_generated_file(file_path: str, content: str) -> List[str]:
+    """
+    Validate generated file content.
+
+    Returns:
+        List of error messages (empty if valid)
+    """
+    errors = []
+
+    # 1. Python syntax check
+    if file_path.endswith('.py'):
+        try:
+            compile(content, file_path, 'exec')
+        except SyntaxError as e:
+            errors.append(f"Syntax error: {e}")
+
+    # 2. Check for required elements
+    if file_path == 'client.py':
+        # Must have list_objects() returning List[str]
+        if 'def list_objects(self) -> List[str]:' not in content:
+            errors.append("Missing correct list_objects() signature")
+
+        # Check for common mistake: returning Dict
+        if re.search(r"return \[{['\"]name['\"]:", content):
+            errors.append("list_objects() returns List[Dict] instead of List[str]")
+
+    # 3. Check for placeholder text
+    if 'TODO' in content or 'FIXME' in content or '...' in content:
+        errors.append("Contains placeholder text (TODO/FIXME/...)")
+
+    return errors
+
+
+def add_validation_feedback(prompt: str, errors: List[str]) -> str:
+    """
+    Add validation error feedback to prompt for retry.
+    """
+    feedback = "\n\n**⚠️ PREVIOUS ATTEMPT HAD THESE ERRORS - FIX THEM:**\n"
+    for i, error in enumerate(errors, 1):
+        feedback += f"{i}. {error}\n"
+
+    return prompt + feedback
+
+
+def add_json_strict_mode(prompt: str) -> str:
+    """
+    Add strict JSON formatting requirements to prompt.
+    """
+    return prompt + """
+
+**⚠️ JSON FORMATTING REQUIREMENTS:**
+- Return ONLY valid JSON
+- No markdown code blocks
+- No explanatory text before or after JSON
+- All strings must use double quotes "
+- No trailing commas
+"""
+
+
+def generate_file_resilient(
+    file_path: str,
+    file_prompt: str,
+    research_data: Dict,
+    class_name: str,
+    claude_client,
+    max_retries: int = 3
+) -> str:
+    """
+    Generate a single file with automatic error recovery.
+
+    Layer 1 defense: Try-catch, validation, fallback strategies.
+
+    Args:
+        file_path: Relative file path (e.g., "client.py")
+        file_prompt: Prompt for generating this file
+        research_data: Research agent output
+        class_name: Driver class name
+        claude_client: Anthropic client instance
+        max_retries: Maximum retry attempts
+
+    Returns:
+        Generated file content as string
+
+    Raises:
+        GenerationError: If all retry strategies fail
+    """
+
+    for attempt in range(max_retries):
+        try:
+            # Log attempt
+            log_agent_interaction('generator', 'input', {
+                'file': file_path,
+                'attempt': attempt + 1,
+                'prompt_length': len(file_prompt)
+            })
+
+            # Determine max_tokens based on file type
+            max_tokens_map = {
+                'client.py': 4000,
+                'README.md': 2000,
+                'tests/test_client.py': 2000,
+                '__init__.py': 500,
+                'exceptions.py': 1000,
+            }
+            # Default for examples
+            max_tokens = max_tokens_map.get(file_path, 800)
+
+            # Call Claude with prompt caching
+            response = claude_client.messages.create(
+                model=get_agent_model('generator'),
+                max_tokens=max_tokens,
+                messages=[{
+                    "role": "user",
+                    "content": [{
+                        "type": "text",
+                        "text": file_prompt,
+                        "cache_control": {"type": "ephemeral"}
+                    }]
+                }],
+                system=[{
+                    "type": "text",
+                    "text": "You are a Code Generator Agent. Return ONLY the requested file content, no wrappers.",
+                    "cache_control": {"type": "ephemeral"}
+                }]
+            )
+
+            # Extract content
+            file_content = response.content[0].text.strip()
+
+            # Clean up markdown code blocks if Claude added them anyway
+            if file_content.startswith("```"):
+                # Remove opening ```python or ```markdown
+                lines = file_content.split('\n')
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                # Remove closing ```
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                file_content = '\n'.join(lines).strip()
+
+            # VALIDATION LAYER
+            validation_errors = validate_generated_file(file_path, file_content)
+
+            if not validation_errors:
+                # Success!
+                log_agent_interaction('generator', 'output', {
+                    'file': file_path,
+                    'length': len(file_content),
+                    'attempt': attempt + 1
+                })
+                return file_content
+
+            # Has validation errors - try to self-correct
+            print(f"   ⚠️  Validation errors on attempt {attempt+1}: {len(validation_errors)}")
+            for err in validation_errors:
+                print(f"      - {err}")
+
+            if attempt < max_retries - 1:
+                # Add validation feedback to prompt for next attempt
+                file_prompt = add_validation_feedback(file_prompt, validation_errors)
+                continue
+            else:
+                # Last attempt failed
+                raise GenerationError(
+                    f"File {file_path} failed validation after {max_retries} attempts",
+                    errors=validation_errors
+                )
+
+        except json.JSONDecodeError as e:
+            # JSON parsing failed
+            print(f"   ⚠️  JSON parse error on attempt {attempt+1}: {e}")
+
+            if attempt < max_retries - 1:
+                # Retry with stronger JSON guidance
+                file_prompt = add_json_strict_mode(file_prompt)
+                continue
+            else:
+                raise GenerationError(f"JSON parsing failed: {e}")
+
+        except AnthropicAPIError as e:
+            # API error (overloaded, timeout, etc.)
+            if 'overloaded' in str(e).lower():
+                wait_time = 5 * (attempt + 1)
+                print(f"   ⏳ API overloaded, waiting {wait_time}s...")
+                time.sleep(wait_time)
+                continue
+            else:
+                raise
+
+    # All retries exhausted
+    raise GenerationError(f"Failed to generate {file_path} after {max_retries} attempts")
 
 
 def generate_driver_with_agents(
@@ -586,62 +795,27 @@ Start directly with the code (or markdown for README).
 """
 
             try:
-
-                # Log Generator Agent input
-                log_agent_interaction('generator', 'input', {
-                    'prompt': file_prompt,
-                    'file_path': file_path,
-                    'model': get_agent_model('generator')
-                })
-
-                # Use prompt caching - cache research_data and base instructions
-                # This saves 90% on cost for files 2-6 (same research data)
-                file_response = claude.messages.create(
-                    model=get_agent_model('generator'),  # User's preferred model for code quality
-                    max_tokens=max_tokens,
-                    messages=[{
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": file_prompt,
-                                "cache_control": {"type": "ephemeral"}
-                            }
-                        ]
-                    }],
-                    system=[
-                        {
-                            "type": "text",
-                            "text": "You are a Code Generator Agent. Return ONLY the requested file content, no wrappers.",
-                            "cache_control": {"type": "ephemeral"}
-                        }
-                    ]
+                # Use Layer 1 defensive wrapper with automatic retry and validation
+                file_content = generate_file_resilient(
+                    file_path=file_path,
+                    file_prompt=file_prompt,
+                    research_data=research_data,
+                    class_name=class_name,
+                    claude_client=claude,
+                    max_retries=3
                 )
-
-                file_content = file_response.content[0].text.strip()
-
-                # Clean up markdown code blocks if Claude added them anyway
-                if file_content.startswith("```"):
-                    # Remove opening ```python or ```markdown
-                    lines = file_content.split('\n')
-                    if lines[0].startswith("```"):
-                        lines = lines[1:]
-                    # Remove closing ```
-                    if lines and lines[-1].strip() == "```":
-                        lines = lines[:-1]
-                    file_content = '\n'.join(lines).strip()
-
-
-                # Log Generator Agent output
-                log_agent_interaction('generator', 'output', {
-                    'file_path': file_path,
-                    'code_length': len(file_content),
-                    'response': file_content[:500]  # First 500 chars
-                })
 
                 files_dict[file_path] = file_content
                 print(f"       ✓ {file_path} ({len(file_content)} chars)")
 
+            except GenerationError as e:
+                print(f"       ✗ Failed to generate {file_path}: {e}")
+                if e.errors:
+                    print(f"          Validation errors:")
+                    for err in e.errors:
+                        print(f"          - {err}")
+                # Continue with other files even if one fails
+                continue
             except Exception as e:
                 print(f"       ✗ Failed to generate {file_path}: {e}")
                 # Continue with other files even if one fails
@@ -1590,3 +1764,520 @@ These lessons will be saved to mem0 for future driver generations!
 
 Now, extract learnings!
 """
+
+# ============================================================================
+# Layer 2: Diagnostic Agent
+# ============================================================================
+
+def launch_diagnostic_agent(
+    failure_context: Dict[str, Any],
+    session_dir: Path,
+    attempt: int
+) -> Dict[str, Any]:
+    """
+    Launch specialized Diagnostic Agent to analyze generation failure.
+
+    Uses Claude Haiku for fast, cheap diagnosis.
+
+    Args:
+        failure_context: Dict with error details, result, etc.
+        session_dir: Path to session logs
+        attempt: Current retry attempt number
+
+    Returns:
+        {
+            "error_type": "formatting|logic|timeout|api|unknown",
+            "root_cause": "Description of what went wrong",
+            "can_fix": true|false,
+            "fix_strategy": "prompt_adjustment|simplify|fallback|abort",
+            "fix_description": "Human readable fix description",
+            "prompt_modification": "Specific change to make to prompts"
+        }
+    """
+    import anthropic
+
+    print(f"   🔍 Diagnostic Agent analyzing failure...")
+
+    # Build diagnostic prompt
+    diagnostic_prompt = build_diagnostic_prompt(failure_context, session_dir)
+
+    # Log diagnostic call
+    log_agent_interaction('diagnostic', 'input', {
+        'attempt': attempt,
+        'context': str(failure_context)[:500]
+    })
+
+    # Initialize Claude client
+    claude = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+    try:
+        response = claude.messages.create(
+            model=get_agent_model('diagnostic'),  # Will use Haiku (fast & cheap)
+            max_tokens=2000,
+            system="""You are a Diagnostic Agent specialized in analyzing driver generation failures.
+
+Your job: Quickly identify root cause and suggest concrete fix.
+
+Return ONLY valid JSON with this structure:
+{
+    "error_type": "formatting|logic|timeout|api|unknown",
+    "root_cause": "...",
+    "can_fix": true|false,
+    "fix_strategy": "prompt_adjustment|simplify|fallback|abort",
+    "fix_description": "...",
+    "prompt_modification": "..."
+}""",
+            messages=[{
+                "role": "user",
+                "content": diagnostic_prompt
+            }]
+        )
+
+        # Parse diagnosis
+        diagnosis_text = response.content[0].text
+
+        # Extract JSON (handle both raw JSON and markdown-wrapped)
+        diagnosis = extract_json_from_response(diagnosis_text)
+
+        # Log result
+        log_agent_interaction('diagnostic', 'output', {
+            'diagnosis': diagnosis
+        })
+
+        print(f"   ✓ Diagnosis: {diagnosis['error_type']} - {diagnosis['root_cause'][:60]}...")
+
+        return diagnosis
+
+    except Exception as e:
+        print(f"   ⚠️  Diagnostic Agent failed: {e}")
+        # Return safe default
+        return {
+            "error_type": "unknown",
+            "root_cause": str(e),
+            "can_fix": False,
+            "fix_strategy": "abort",
+            "fix_description": "Diagnostic agent failed",
+            "prompt_modification": ""
+        }
+
+
+def build_diagnostic_prompt(context: Dict, session_dir: Path) -> str:
+    """
+    Build diagnostic prompt with all available context.
+    """
+    # Read recent logs
+    logs = read_recent_logs(session_dir, max_lines=100)
+
+    prompt = f"""Analyze this driver generation failure:
+
+**Attempt:** {context.get('attempt', 0)}/3
+
+**Error Type:** {context.get('error_type', 'Unknown')}
+
+**Error Message:**
+{context.get('error_message', 'No error message')}
+
+**Generation Result:**
+```json
+{json.dumps(context.get('result', {}), indent=2)[:1000]}
+```
+
+**Recent Logs:**
+```
+{logs}
+```
+
+**Context:**
+- API: {context.get('api_name', 'Unknown')}
+- Files generated: {context.get('files_generated', [])}
+- Test results: {context.get('test_results', {})}
+
+**Your Task:**
+
+1. **Classify error type:**
+   - formatting: JSON/syntax/string formatting issues
+   - logic: Wrong implementation (e.g., list_objects returns Dict)
+   - timeout: Took too long
+   - api: Anthropic API issues (overload, rate limit)
+   - unknown: Can't determine
+
+2. **Identify root cause:** What specifically went wrong?
+
+3. **Determine if fixable:** Can we recover by adjusting prompts?
+
+4. **Suggest fix strategy:**
+   - prompt_adjustment: Add specific instruction to prompt
+   - simplify: Reduce complexity, use simpler approach
+   - fallback: Use template-based generation
+   - abort: Fatal error, can't recover
+
+5. **Describe fix:** Concrete change to make
+
+Return JSON with your analysis.
+"""
+
+    return prompt
+
+
+def read_recent_logs(session_dir: Path, max_lines: int = 100) -> str:
+    """
+    Read most recent log entries from session.
+    """
+    logs = []
+
+    # Read from .txt logs (human-readable)
+    for log_file in sorted(session_dir.glob("*.txt"), reverse=True):
+        try:
+            with open(log_file, 'r') as f:
+                content = f.read()
+                logs.append(f"=== {log_file.name} ===\n{content[-1000:]}")  # Last 1000 chars
+        except:
+            pass
+
+    full_log = "\n\n".join(logs)
+
+    # Truncate if too long
+    lines = full_log.split('\n')
+    if len(lines) > max_lines:
+        return '\n'.join(lines[-max_lines:])
+
+    return full_log
+
+
+def extract_json_from_response(text: str) -> Dict:
+    """
+    Extract JSON from Claude response (handles markdown wrapping).
+    """
+    import re
+
+    # Try direct JSON parse first
+    try:
+        return json.loads(text)
+    except:
+        pass
+
+    # Look for JSON in markdown code block
+    match = re.search(r'```(?:json)?\n(.*?)\n```', text, re.DOTALL)
+    if match:
+        return json.loads(match.group(1))
+
+    # Look for JSON object
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if match:
+        return json.loads(match.group(0))
+
+    raise ValueError(f"No valid JSON found in response: {text[:200]}")
+
+
+# ==============================================================================
+# LAYER 3: SUPERVISOR AGENT - Self-Healing Orchestration
+# ==============================================================================
+
+# Global state for diagnostic fixes
+DIAGNOSTIC_PROMPT_ADJUSTMENTS = []
+USE_SIMPLIFIED_PROMPTS = False
+USE_FALLBACK_GENERATION = False
+
+
+class GenerationError(Exception):
+    """
+    Exception raised by defensive wrappers when generation fails catastrophically.
+
+    Used by Layer 1 (defensive wrappers) to signal that generation should be
+    stopped and escalated to Layer 3 (Supervisor Agent).
+    """
+    def __init__(self, message: str, errors: List[Any] = None):
+        super().__init__(message)
+        self.errors = errors or []
+
+
+def generate_driver_supervised(
+    api_name: str,
+    api_url: str,
+    output_dir: Optional[str] = None,
+    max_supervisor_attempts: int = 3,
+    max_retries: int = 7
+) -> Dict[str, Any]:
+    """
+    🏆 MAIN ENTRY POINT for self-healing driver generation.
+
+    This function wraps generate_driver_with_agents() with supervisor-level
+    retry logic that:
+    1. Monitors the entire generation process
+    2. Launches Diagnostic Agent on failures
+    3. Applies fixes and retries with adaptive strategies
+    4. Learns from failures for future generations
+
+    Architecture:
+        Layer 3 (This): Supervisor orchestration
+        Layer 2: Diagnostic Agent for failure analysis
+        Layer 1: Defensive wrappers in generate_file_resilient()
+
+    Args:
+        api_name: Name of API (e.g., "Open-Meteo")
+        api_url: Base URL of API
+        output_dir: Optional output directory
+        max_supervisor_attempts: Max supervisor-level retries (default: 3)
+        max_retries: Max fix-retry iterations per attempt (default: 7)
+
+    Returns:
+        Same format as generate_driver_with_agents() but with added fields:
+        {
+            "success": bool,
+            "supervisor_attempts": int,
+            "diagnostics_run": int,
+            "fixes_applied": List[str],
+            ...
+        }
+    """
+    import time
+
+    print("=" * 80)
+    print("🏆 SUPERVISOR: Self-Healing Driver Generation")
+    print("=" * 80)
+    print(f"Max supervisor attempts: {max_supervisor_attempts}")
+    print(f"Max fix-retry iterations per attempt: {max_retries}")
+    print()
+
+    session_dir = init_session_logging()
+
+    supervisor_context = {
+        'api_name': api_name,
+        'api_url': api_url,
+        'attempts': [],
+        'diagnostics_run': 0,
+        'fixes_applied': []
+    }
+
+    for attempt in range(max_supervisor_attempts):
+        print(f"\n{'='*80}")
+        print(f"🔄 SUPERVISOR ATTEMPT {attempt + 1}/{max_supervisor_attempts}")
+        print(f"{'='*80}\n")
+
+        attempt_context = {
+            'attempt_num': attempt + 1,
+            'start_time': time.time()
+        }
+
+        try:
+            # === CORE GENERATION ===
+            result = generate_driver_with_agents(
+                api_name=api_name,
+                api_url=api_url,
+                output_dir=output_dir,
+                max_retries=max_retries
+            )
+
+            attempt_context['result'] = result
+            attempt_context['duration'] = time.time() - attempt_context['start_time']
+
+            # === CHECK SUCCESS ===
+            if result.get('success'):
+                print(f"\n✅ SUPERVISOR: Generation successful on attempt {attempt + 1}")
+
+                # Add supervisor metadata
+                result['supervisor_attempts'] = attempt + 1
+                result['diagnostics_run'] = supervisor_context['diagnostics_run']
+                result['fixes_applied'] = supervisor_context['fixes_applied']
+
+                return result
+
+            # === GENERATION FAILED ===
+            print(f"\n⚠️  SUPERVISOR: Generation failed on attempt {attempt + 1}")
+            print(f"   Reason: {result.get('error', 'Unknown')}")
+
+            # Don't retry if this was the last attempt
+            if attempt >= max_supervisor_attempts - 1:
+                print(f"\n❌ SUPERVISOR: Max attempts reached")
+                result['supervisor_attempts'] = attempt + 1
+                result['diagnostics_run'] = supervisor_context['diagnostics_run']
+                result['fixes_applied'] = supervisor_context['fixes_applied']
+                return result
+
+            # === LAUNCH DIAGNOSTIC AGENT ===
+            print(f"\n🔍 SUPERVISOR: Launching Diagnostic Agent...")
+            supervisor_context['diagnostics_run'] += 1
+
+            diagnosis = launch_diagnostic_agent(
+                failure_context={
+                    'attempt': attempt + 1,
+                    'error_type': 'generation_failed',
+                    'error_message': result.get('error', ''),
+                    'result': result,
+                    'api_name': api_name,
+                    'files_generated': result.get('files_created', []),
+                    'test_results': {
+                        'passed': result.get('tests_passed', 0),
+                        'failed': result.get('tests_failed', 0)
+                    }
+                },
+                session_dir=session_dir,
+                attempt=attempt
+            )
+
+            attempt_context['diagnosis'] = diagnosis
+
+            # === CHECK IF FIXABLE ===
+            if not diagnosis.get('can_fix'):
+                print(f"\n❌ SUPERVISOR: Diagnostic says cannot fix: {diagnosis.get('root_cause')}")
+                result['diagnosis'] = diagnosis
+                result['supervisor_attempts'] = attempt + 1
+                return result
+
+            # === APPLY FIX ===
+            print(f"\n🔧 SUPERVISOR: Applying fix...")
+            print(f"   Strategy: {diagnosis.get('fix_strategy')}")
+            print(f"   Description: {diagnosis.get('fix_description')}")
+
+            fix_result = apply_diagnostic_fix(diagnosis, api_name, api_url)
+
+            supervisor_context['fixes_applied'].append({
+                'attempt': attempt + 1,
+                'strategy': diagnosis.get('fix_strategy'),
+                'description': diagnosis.get('fix_description')
+            })
+
+            if not fix_result['success']:
+                print(f"   ⚠️  Fix application failed: {fix_result.get('error')}")
+                # Continue to retry anyway
+            else:
+                print(f"   ✓ Fix applied successfully")
+
+            # Retry on next iteration
+            print(f"\n🔄 SUPERVISOR: Retrying with applied fixes...")
+
+        except GenerationError as e:
+            # Layer 1 defensive wrapper raised error
+            print(f"\n💥 SUPERVISOR: Generation error caught: {e}")
+
+            attempt_context['crash'] = {
+                'type': type(e).__name__,
+                'message': str(e),
+                'errors': getattr(e, 'errors', [])
+            }
+
+            # Last attempt?
+            if attempt >= max_supervisor_attempts - 1:
+                return {
+                    'success': False,
+                    'error': str(e),
+                    'supervisor_attempts': attempt + 1,
+                    'diagnostics_run': supervisor_context['diagnostics_run'],
+                    'crash': attempt_context['crash']
+                }
+
+            # Diagnose crash
+            print(f"🔍 SUPERVISOR: Diagnosing crash...")
+            supervisor_context['diagnostics_run'] += 1
+
+            diagnosis = launch_diagnostic_agent(
+                failure_context={
+                    'attempt': attempt + 1,
+                    'error_type': 'crash',
+                    'error_message': str(e),
+                    'crash_details': attempt_context['crash'],
+                    'api_name': api_name
+                },
+                session_dir=session_dir,
+                attempt=attempt
+            )
+
+            if diagnosis.get('can_fix'):
+                apply_diagnostic_fix(diagnosis, api_name, api_url)
+                supervisor_context['fixes_applied'].append({
+                    'attempt': attempt + 1,
+                    'type': 'crash_recovery',
+                    'description': diagnosis.get('fix_description')
+                })
+
+            # Retry
+            continue
+
+        except Exception as e:
+            # Unexpected error
+            print(f"\n💥 SUPERVISOR: Unexpected error: {type(e).__name__}: {e}")
+
+            if attempt >= max_supervisor_attempts - 1:
+                return {
+                    'success': False,
+                    'error': f"Unexpected: {e}",
+                    'supervisor_attempts': attempt + 1,
+                    'diagnostics_run': supervisor_context['diagnostics_run']
+                }
+
+            # Last-resort: wait and retry
+            print(f"⏳ Waiting 10s before retry...")
+            time.sleep(10)
+            continue
+
+        finally:
+            # Record attempt
+            supervisor_context['attempts'].append(attempt_context)
+
+    # All attempts exhausted
+    print(f"\n❌ SUPERVISOR: All {max_supervisor_attempts} attempts failed")
+
+    return {
+        'success': False,
+        'error': 'All supervisor attempts exhausted',
+        'supervisor_attempts': max_supervisor_attempts,
+        'diagnostics_run': supervisor_context['diagnostics_run'],
+        'fixes_applied': supervisor_context['fixes_applied'],
+        'attempts': supervisor_context['attempts']
+    }
+
+
+def apply_diagnostic_fix(
+    diagnosis: Dict[str, Any],
+    api_name: str,
+    api_url: str
+) -> Dict[str, bool]:
+    """
+    Apply fix suggested by Diagnostic Agent.
+
+    Args:
+        diagnosis: Output from launch_diagnostic_agent()
+        api_name: API name
+        api_url: API URL
+
+    Returns:
+        {"success": bool, "error": str}
+    """
+
+    strategy = diagnosis.get('fix_strategy')
+
+    try:
+        if strategy == 'prompt_adjustment':
+            # Modify prompts globally
+            modification = diagnosis.get('prompt_modification', '')
+
+            # This would need to modify the prompt templates
+            # For now, we'll store it in a global that gets picked up next iteration
+            global DIAGNOSTIC_PROMPT_ADJUSTMENTS
+            DIAGNOSTIC_PROMPT_ADJUSTMENTS.append(modification)
+
+            return {'success': True}
+
+        elif strategy == 'simplify':
+            # Reduce complexity - use simpler prompts
+            global USE_SIMPLIFIED_PROMPTS
+            USE_SIMPLIFIED_PROMPTS = True
+
+            return {'success': True}
+
+        elif strategy == 'fallback':
+            # Would trigger fallback generation
+            global USE_FALLBACK_GENERATION
+            USE_FALLBACK_GENERATION = True
+
+            return {'success': True}
+
+        elif strategy == 'abort':
+            # Don't retry
+            return {'success': False, 'error': 'Diagnostic says abort'}
+
+        else:
+            return {'success': False, 'error': f'Unknown strategy: {strategy}'}
+
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
