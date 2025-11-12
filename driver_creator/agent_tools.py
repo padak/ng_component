@@ -404,7 +404,8 @@ def generate_driver_with_agents(
 - If public API (no auth required), make api_key optional with default None
 - Use requests.Session() for connection pooling
 - Clear error messages with custom exceptions
-
+"""
+                file_prompt += """
 **⚠️⚠️⚠️ CRITICAL REQUIREMENTS - READ THIS 3 TIMES BEFORE WRITING CODE ⚠️⚠️⚠️**
 
 **🚨 COMMON MISTAKE TO AVOID 🚨**
