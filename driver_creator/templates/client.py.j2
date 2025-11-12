@@ -217,6 +217,7 @@ class {{ driver_class }}:
             return []
             {% elif api_type == "GraphQL" %}
             # GraphQL introspection query
+            {% raw %}
             introspection_query = """
             {
                 __schema {
@@ -227,6 +228,7 @@ class {{ driver_class }}:
                 }
             }
             """
+            {% endraw %}
             response = self._api_call("/graphql", method="POST", json={"query": introspection_query})
             types = response.get("data", {}).get("__schema", {}).get("types", [])
             # Filter for OBJECT types only (exclude scalars, interfaces, etc.)
@@ -319,6 +321,7 @@ class {{ driver_class }}:
             raise
         {% elif api_type == "GraphQL" %}
         # GraphQL type introspection
+        {% raw %}
         introspection_query = f"""
         {{
             __type(name: "{object_name}") {{
@@ -332,6 +335,7 @@ class {{ driver_class }}:
             }}
         }}
         """
+        {% endraw %}
         response = self._api_call("/graphql", method="POST", json={"query": introspection_query})
         type_info = response.get("data", {}).get("__type", {})
 
