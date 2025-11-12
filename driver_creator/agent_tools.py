@@ -115,11 +115,27 @@ def generate_driver_with_agents(
     )
 
     try:
+        # Use prompt caching for system prompt (saves 90% on repeated calls)
         research_response = claude.messages.create(
             model="claude-sonnet-4-5-20250929",
             max_tokens=4000,
-            messages=[{"role": "user", "content": research_prompt}],
-            system="You are a Research Agent specializing in API analysis. Return ONLY valid JSON."
+            messages=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": research_prompt,
+                        "cache_control": {"type": "ephemeral"}
+                    }
+                ]
+            }],
+            system=[
+                {
+                    "type": "text",
+                    "text": "You are a Research Agent specializing in API analysis. Return ONLY valid JSON.",
+                    "cache_control": {"type": "ephemeral"}
+                }
+            ]
         )
 
         research_text = research_response.content[0].text
@@ -160,84 +176,181 @@ def generate_driver_with_agents(
     )
 
     try:
-        # Modified: Request markdown format instead of JSON to avoid escaping issues
-        generator_system = """You are a Code Generator Agent. Generate COMPLETE, working Python code.
+        # NEW APPROACH: Generate files one-by-one to avoid JSON parsing issues
+        # This is more reliable and produces better quality code per file
 
-Return each file as a markdown code block with format:
-### FILE: path/to/file.py
-```python
-# file content here
+        files_to_generate = [
+            {
+                "path": "client.py",
+                "description": f"Main {class_name}Driver class with all core methods",
+                "max_tokens": 4000
+            },
+            {
+                "path": "__init__.py",
+                "description": "Package initialization, exports",
+                "max_tokens": 500
+            },
+            {
+                "path": "exceptions.py",
+                "description": "Custom exception hierarchy",
+                "max_tokens": 1000
+            },
+            {
+                "path": "README.md",
+                "description": "Complete documentation with examples",
+                "max_tokens": 2000
+            },
+            {
+                "path": "examples/list_objects.py",
+                "description": "Example: List all available objects",
+                "max_tokens": 800
+            },
+            {
+                "path": "tests/test_client.py",
+                "description": "Unit tests for the driver",
+                "max_tokens": 2000
+            }
+        ]
+
+        files_dict = {}
+
+        for file_info in files_to_generate:
+            file_path = file_info["path"]
+            description = file_info["description"]
+            max_tokens = file_info["max_tokens"]
+
+            print(f"     Generating {file_path}...")
+
+            # Create file-specific prompt
+            file_prompt = f"""Generate {file_path} for {api_name} driver.
+
+**File Purpose:** {description}
+
+**Research Data:**
+```json
+{json.dumps(research_data, indent=2)}
 ```
 
-Example:
-### FILE: client.py
-```python
-class Driver:
-    pass
-```
+**Driver Class Name:** {class_name}Driver
 
-### FILE: __init__.py
-```python
-from .client import Driver
-```
+**Requirements for this file:**
 """
 
-        generator_response = claude.messages.create(
-            model="claude-sonnet-4-5-20250929",
-            max_tokens=8000,
-            messages=[{"role": "user", "content": generator_prompt}],
-            system=generator_system
-        )
+            # Add specific requirements per file type
+            if file_path == "client.py":
+                file_prompt += """
+- Class name: {class_name}Driver
+- Methods: __init__, from_env, get_capabilities, list_objects, get_fields, query/read
+- Include retry logic with exponential backoff
+- Validate connection in __init__ (fail fast!)
+- Match API type from research (REST/GraphQL/Database/etc.)
+- If public API (no auth required), make api_key optional with default None
+- Use requests.Session() for connection pooling
+- Clear error messages with custom exceptions
+""".format(class_name=class_name)
 
-        generator_text = generator_response.content[0].text
+            elif file_path == "__init__.py":
+                file_prompt += f"""
+- Export {class_name}Driver
+- Export all custom exceptions
+- Set __version__ = "1.0.0"
+"""
 
-        # Parse response - Claude might return JSON or markdown
-        files_dict = {}
-        import re
+            elif file_path == "exceptions.py":
+                file_prompt += """
+- Base: DriverError(Exception)
+- Specific: AuthenticationError, ConnectionError, QuerySyntaxError, RateLimitError, ObjectNotFoundError
+- Each exception should have helpful error messages
+"""
 
-        # Save raw output for debugging
-        debug_file = output_dir / "generator_output.txt"
-        with open(debug_file, 'w', encoding='utf-8') as f:
-            f.write(generator_text)
+            elif file_path == "README.md":
+                file_prompt += f"""
+- Overview of {api_name} driver
+- Installation instructions
+- Quick start example
+- Authentication setup (if needed)
+- Usage examples
+- API reference
+- Troubleshooting common issues
+"""
 
-        # Try JSON format first (Claude often returns JSON anyway)
-        if "```json" in generator_text or generator_text.strip().startswith("{"):
+            elif file_path.startswith("examples/"):
+                file_prompt += f"""
+- Complete working example
+- Include imports
+- Show how to initialize driver
+- Demonstrate the specific functionality
+- Add error handling
+- Make it runnable as standalone script
+"""
+
+            elif file_path.startswith("tests/"):
+                file_prompt += f"""
+- Use pytest framework
+- Test all core methods: __init__, list_objects, get_fields, query/read
+- Mock API responses with unittest.mock
+- Test error handling
+- Test connection validation
+- Include fixtures for setup/teardown
+"""
+
+            file_prompt += f"""
+
+**Previous Learnings:**
+{chr(10).join([f"- {m}" for m in memory_context]) if memory_context else "No previous learnings yet"}
+
+Return ONLY the code for {file_path}. No JSON wrapper, no markdown code blocks.
+Start directly with the code (or markdown for README).
+"""
+
             try:
-                # Extract JSON from code block if present
-                if "```json" in generator_text:
-                    json_text = generator_text.split("```json")[1].split("```")[0].strip()
-                elif "```" in generator_text:
-                    json_text = generator_text.split("```")[1].split("```")[0].strip()
-                else:
-                    json_text = generator_text.strip()
+                # Use prompt caching - cache research_data and base instructions
+                # This saves 90% on cost for files 2-6 (same research data)
+                file_response = claude.messages.create(
+                    model="claude-sonnet-4-5-20250929",
+                    max_tokens=max_tokens,
+                    messages=[{
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": file_prompt,
+                                "cache_control": {"type": "ephemeral"}
+                            }
+                        ]
+                    }],
+                    system=[
+                        {
+                            "type": "text",
+                            "text": "You are a Code Generator Agent. Return ONLY the requested file content, no wrappers.",
+                            "cache_control": {"type": "ephemeral"}
+                        }
+                    ]
+                )
 
-                # Parse JSON
-                data = json.loads(json_text)
-                files_dict = data.get("files", {})
-                print(f"   ✓ Parsed {len(files_dict)} files from JSON format")
-            except json.JSONDecodeError as e:
-                print(f"   ⚠ JSON parsing failed: {e}")
-                print(f"   Trying markdown format...")
+                file_content = file_response.content[0].text.strip()
 
-        # If JSON failed, try markdown format
-        if not files_dict:
-            # Pattern: ### FILE: path\n```language\ncode```
-            file_pattern = r'###\s*FILE:\s*(.+?)\n```(?:\w+)?\n(.*?)\n```'
-            matches = re.findall(file_pattern, generator_text, re.DOTALL)
+                # Clean up markdown code blocks if Claude added them anyway
+                if file_content.startswith("```"):
+                    # Remove opening ```python or ```markdown
+                    lines = file_content.split('\n')
+                    if lines[0].startswith("```"):
+                        lines = lines[1:]
+                    # Remove closing ```
+                    if lines and lines[-1].strip() == "```":
+                        lines = lines[:-1]
+                    file_content = '\n'.join(lines).strip()
 
-            for file_path, content in matches:
-                file_path = file_path.strip()
-                files_dict[file_path] = content.strip()
+                files_dict[file_path] = file_content
+                print(f"       ✓ {file_path} ({len(file_content)} chars)")
 
-            if files_dict:
-                print(f"   ✓ Parsed {len(files_dict)} files from markdown format")
-
-        if not files_dict:
-            print(f"   ⚠ Could not parse any files from output")
-            print(f"   Debug output saved to: {debug_file}")
+            except Exception as e:
+                print(f"       ✗ Failed to generate {file_path}: {e}")
+                # Continue with other files even if one fails
+                continue
 
         print(f"   ✓ Code generation completed!")
-        print(f"     - Files generated: {len(files_dict)}")
+        print(f"     - Files generated: {len(files_dict)}/{len(files_to_generate)}")
 
         # Write files to disk
         files_created = []
@@ -302,9 +415,182 @@ from .client import Driver
                     print(f"   ✗ Tests failed")
                     if iteration < max_retries:
                         print(f"   🔧 Launching fix iteration...")
-                        # TODO: Implement fix logic with Tester Agent
-                        print(f"   ⚠ Fix loop not yet implemented - stopping here")
-                        break
+
+                        # Analyze errors and generate fix
+                        errors = test_results.get("errors", [])
+                        if not errors:
+                            print(f"   ⚠ No specific errors to fix - stopping here")
+                            break
+
+                        print(f"   📋 Analyzing {len(errors)} error(s)...")
+
+                        # Create fix prompt for Tester Agent
+                        error_summary = "\n".join([
+                            f"- {err.get('test', 'unknown')}: {err.get('error', 'unknown')}"
+                            for err in errors
+                        ])
+
+                        fix_prompt = f"""You are a Tester & Debugger Agent. Analyze test failures and suggest fixes.
+
+**Driver:** {api_name}
+**Test Results:** {tests_passed} passed, {tests_failed} failed
+
+**Errors:**
+{error_summary}
+
+**Test Output:**
+{test_results.get('output', 'N/A')[:2000]}
+
+**Your Task:**
+1. Identify the root cause of each error
+2. Suggest specific code fixes
+3. Return JSON with fixes for each file
+
+**Common Issues:**
+- `list_objects()` should return `List[str]` (e.g., `["users", "posts"]`), NOT `List[Dict]`
+- `get_fields()` should return field schema as Dict
+- Connection errors: check API URL format
+- Auth errors: check if API really needs auth
+
+Return JSON:
+```json
+{{
+    "analysis": "Root cause analysis...",
+    "fixes": [
+        {{
+            "file": "client.py",
+            "issue": "list_objects() returns List[Dict] instead of List[str]",
+            "fix": "Extract only the 'name' field from each object",
+            "code_change": "return [obj['name'] for obj in objects] instead of return objects"
+        }}
+    ]
+}}
+```
+"""
+
+                        try:
+                            print(f"   🤖 Asking Tester Agent for fix suggestions...")
+
+                            # Use prompt caching for error analysis
+                            fix_response = claude.messages.create(
+                                model="claude-sonnet-4-5-20250929",
+                                max_tokens=3000,
+                                messages=[{
+                                    "role": "user",
+                                    "content": [
+                                        {
+                                            "type": "text",
+                                            "text": fix_prompt,
+                                            "cache_control": {"type": "ephemeral"}
+                                        }
+                                    ]
+                                }],
+                                system=[
+                                    {
+                                        "type": "text",
+                                        "text": "You are a Tester & Debugger Agent. Analyze errors and return ONLY valid JSON.",
+                                        "cache_control": {"type": "ephemeral"}
+                                    }
+                                ]
+                            )
+
+                            fix_text = fix_response.content[0].text
+
+                            # Extract JSON from response
+                            if "```json" in fix_text:
+                                fix_text = fix_text.split("```json")[1].split("```")[0].strip()
+                            elif "```" in fix_text:
+                                fix_text = fix_text.split("```")[1].split("```")[0].strip()
+
+                            fix_data = json.loads(fix_text)
+
+                            print(f"   📝 Analysis: {fix_data.get('analysis', 'N/A')[:100]}...")
+                            print(f"   🔧 Fixes suggested: {len(fix_data.get('fixes', []))}")
+
+                            # Apply fixes - regenerate affected files
+                            files_to_fix = set([fix['file'] for fix in fix_data.get('fixes', [])])
+
+                            if not files_to_fix:
+                                print(f"   ⚠ No specific file fixes suggested - stopping here")
+                                break
+
+                            for file_to_fix in files_to_fix:
+                                print(f"   ♻️  Regenerating {file_to_fix}...")
+
+                                # Find the fix for this file
+                                file_fixes = [f for f in fix_data.get('fixes', []) if f['file'] == file_to_fix]
+                                fix_instructions = "\n".join([
+                                    f"- {f['issue']}: {f['fix']}"
+                                    for f in file_fixes
+                                ])
+
+                                # Regenerate file with fix instructions
+                                fix_file_prompt = f"""Regenerate {file_to_fix} for {api_name} driver with these FIXES:
+
+{fix_instructions}
+
+**Original Research Data:**
+```json
+{json.dumps(research_data, indent=2)}
+```
+
+**CRITICAL FIXES TO APPLY:**
+{chr(10).join([f"Fix {i+1}: {f['code_change']}" for i, f in enumerate(file_fixes)])}
+
+Return ONLY the corrected code for {file_to_fix}, no JSON wrapper, no markdown.
+Start directly with the code.
+"""
+
+                                try:
+                                    # Use prompt caching for fix regeneration
+                                    regen_response = claude.messages.create(
+                                        model="claude-sonnet-4-5-20250929",
+                                        max_tokens=4000,
+                                        messages=[{
+                                            "role": "user",
+                                            "content": [
+                                                {
+                                                    "type": "text",
+                                                    "text": fix_file_prompt,
+                                                    "cache_control": {"type": "ephemeral"}
+                                                }
+                                            ]
+                                        }],
+                                        system=[
+                                            {
+                                                "type": "text",
+                                                "text": "You are a Code Generator Agent fixing bugs. Return ONLY the corrected file content.",
+                                                "cache_control": {"type": "ephemeral"}
+                                            }
+                                        ]
+                                    )
+
+                                    fixed_content = regen_response.content[0].text.strip()
+
+                                    # Clean up markdown if present
+                                    if fixed_content.startswith("```"):
+                                        lines = fixed_content.split('\n')
+                                        if lines[0].startswith("```"):
+                                            lines = lines[1:]
+                                        if lines and lines[-1].strip() == "```":
+                                            lines = lines[:-1]
+                                        fixed_content = '\n'.join(lines).strip()
+
+                                    # Write fixed file
+                                    fixed_file_path = output_dir / file_to_fix
+                                    with open(fixed_file_path, 'w', encoding='utf-8') as f:
+                                        f.write(fixed_content)
+
+                                    print(f"       ✓ {file_to_fix} fixed ({len(fixed_content)} chars)")
+
+                                except Exception as e:
+                                    print(f"       ✗ Failed to fix {file_to_fix}: {e}")
+
+                            print(f"   ✅ Fixes applied, retrying tests...")
+
+                        except Exception as e:
+                            print(f"   ✗ Fix generation failed: {e}")
+                            break
                     else:
                         print(f"   ✗ Max retries reached")
 

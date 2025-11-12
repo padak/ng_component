@@ -1,0 +1,20 @@
+# Generated drivers (examples, not for repo)
+generated_drivers/
+
+# Test outputs
+test_results.json
+*.pyc
+__pycache__/
+
+# Environment
+.env
+
+# Temporary test files
+test.py
+test_dog_ceo.py
+test_dog_ceo_simple.py
+
+# Python egg info
+*.egg-info/
+build/
+dist/
