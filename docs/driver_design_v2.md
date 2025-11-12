@@ -6,6 +6,61 @@
 
 ---
 
+## Table of Contents
+
+1. [Executive Summary](#executive-summary)
+   - [Key Relationship](#key-relationship)
+   - [Core Principle](#core-principle)
+   - [What Driver Provides](#what-driver-provides)
+2. [Driver API Contract v2.0](#driver-api-contract-v20)
+   - [Core Interface](#core-interface)
+3. [Exception Hierarchy](#exception-hierarchy)
+   - [Error Message Best Practices](#error-message-best-practices)
+4. [Documentation Requirements](#documentation-requirements)
+   - [1. README.md (REQUIRED)](#1-readmemd-required)
+   - [2. Docstrings (REQUIRED)](#2-docstrings-required)
+   - [3. OpenAPI Spec (OPTIONAL - for REST APIs)](#3-openapi-spec-optional---for-rest-apis)
+   - [4. Example Scripts (REQUIRED)](#4-example-scripts-required)
+5. [System-Specific Examples](#system-specific-examples)
+   - [Example 1: Salesforce Driver (Query Language + High-Level API)](#example-1-salesforce-driver-query-language--high-level-api)
+   - [Example 2: Weather API Driver (REST API, No Query Language)](#example-2-weather-api-driver-rest-api-no-query-language)
+   - [Example 3: PostgreSQL Driver (SQL Query Language)](#example-3-postgresql-driver-sql-query-language)
+6. [Agent Integration Guidelines](#agent-integration-guidelines)
+   - [1. Discovery Flow](#1-discovery-flow)
+   - [2. Code Generation Patterns](#2-code-generation-patterns)
+   - [3. README-Driven Learning](#3-readme-driven-learning)
+7. [Production Considerations](#production-considerations)
+   - [1. Rate Limiting Strategy](#1-rate-limiting-strategy)
+   - [2. Connection Pooling](#2-connection-pooling)
+   - [3. Debug Mode](#3-debug-mode)
+   - [4. Testing Guidelines](#4-testing-guidelines)
+   - [5. Versioning](#5-versioning)
+8. [Comparison with MCP Code Execution](#comparison-with-mcp-code-execution)
+   - [Shared Foundation](#shared-foundation)
+   - [Our Specialized Advantages](#our-specialized-advantages)
+     - [1. Data Integration Focus](#1-data-integration-focus)
+     - [2. The "10% vs 90%" Problem](#2-the-10-vs-90-problem)
+     - [3. Business User Workflow](#3-business-user-workflow)
+     - [4. LLM-Optimized Documentation](#4-llm-optimized-documentation)
+     - [5. Both Abstraction Layers](#5-both-abstraction-layers)
+     - [6. Query Language Agnostic](#6-query-language-agnostic)
+     - [7. Production-Ready Features](#7-production-ready-features)
+     - [8. Structured Exception Hierarchy](#8-structured-exception-hierarchy)
+     - [9. Capabilities Discovery](#9-capabilities-discovery)
+     - [10. Multi-System Orchestration](#10-multi-system-orchestration)
+   - [Comparison Summary](#comparison-summary)
+   - [Positioning](#positioning)
+   - [Conclusion](#conclusion)
+9. [Summary Checklist](#summary-checklist)
+   - [Required Implementation](#required-implementation)
+   - [Optional (Based on Capabilities)](#optional-based-on-capabilities)
+   - [Documentation](#documentation)
+   - [Testing](#testing)
+   - [Production Readiness](#production-readiness)
+10. [Next Steps](#next-steps)
+
+---
+
 ## Executive Summary
 
 The **Driver** is the bridge between the **Agent** (Claude Code generating Python scripts) and **External Systems** (Salesforce, PostgreSQL, Weather APIs, etc.).
