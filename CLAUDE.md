@@ -133,10 +133,12 @@ SF_API_KEY=test_key_12345                       # Mock API key
 **Notes:**
 - `SF_API_URL` should always be `http://localhost:8000` because this URL is used by scripts running inside the E2B sandbox to connect to the Mock API also running inside the same sandbox
 - `ANTHROPIC_API_KEY` is only needed for the Web UI. If not set, Web UI falls back to pattern-matching mode
-- `CLAUDE_MODEL` options:
-  - `claude-sonnet-4-5-20250929` (default) - Best for complex tasks, coding, computer use
-  - `claude-sonnet-4-20250514` - Balanced performance
-  - `claude-haiku-4-20250514` - Fastest, cheapest (60x cheaper than Sonnet 4.5!)
+- `CLAUDE_MODEL` options (short names accepted, will be mapped to full IDs):
+  - `claude-sonnet-4-5` → `claude-sonnet-4-5-20250929` (default) - Best for complex tasks. **Supports prompt caching** ✓
+  - `claude-sonnet-4` → `claude-sonnet-4-20250514` - Balanced performance. **Supports prompt caching** ✓
+  - `claude-haiku-4-5` → `claude-haiku-4-5-20251001` - Fastest, cheapest (60x cheaper than Sonnet 4.5!). **Supports prompt caching** ✓
+  - `claude-haiku-3-5` → `claude-3-5-haiku-20241022` - Fast and cheap. **Supports prompt caching** ✓
+- **Prompt Caching:** Supported by Opus 4.1/4/3, Sonnet 4.5/4/3.7, and Haiku 4.5/3.5/3. See [Anthropic docs](https://docs.claude.com/en/docs/build-with-claude/prompt-caching).
 - Get your Anthropic API key from: https://console.anthropic.com/
 
 ## Architecture Flow

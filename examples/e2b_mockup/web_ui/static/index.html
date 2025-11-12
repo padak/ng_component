@@ -151,23 +151,24 @@
         </div>
 
         <!-- Right Column: Sidebar -->
-        <div class="flex flex-col gap-4 overflow-y-auto">
+        <div class="flex flex-col gap-2 overflow-y-auto">
 
             <!-- Agent Status Card -->
-            <div class="bg-white rounded-lg shadow-md p-4">
-                <h3 class="font-semibold text-gray-800 mb-3">Agent Status</h3>
-                <div id="agent-working-indicator" class="hidden mb-3 bg-blue-50 border border-blue-300 rounded-lg p-3">
+            <div class="bg-white rounded-lg shadow-md p-3">
+                <h3 class="font-semibold text-gray-800 text-sm mb-2">Agent Status</h3>
+                <div id="agent-status-content" class="space-y-1">
                     <div class="flex items-center gap-2">
-                        <div class="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                        <span class="text-sm text-blue-700 font-medium">Agent is working...</span>
+                        <div id="agent-status-indicator" class="w-2 h-2 bg-gray-400 rounded-full"></div>
+                        <span id="agent-status-text" class="text-xs text-gray-600">Idle</span>
                     </div>
+                    <div id="agent-current-activity" class="text-xs text-gray-500 hidden pl-4"></div>
                 </div>
             </div>
 
             <!-- Token Usage Card -->
-            <div class="bg-white rounded-lg shadow-md p-4">
-                <h3 class="font-semibold text-gray-800 mb-3">Token Usage</h3>
-                <div class="space-y-2 text-sm">
+            <div class="bg-white rounded-lg shadow-md p-3">
+                <h3 class="font-semibold text-gray-800 text-sm mb-2">Token Usage</h3>
+                <div class="space-y-1 text-xs">
                     <div class="flex justify-between">
                         <span class="text-gray-600">Input:</span>
                         <span id="total-input-tokens" class="font-mono font-semibold">0</span>
@@ -176,7 +177,7 @@
                         <span class="text-gray-600">Output:</span>
                         <span id="total-output-tokens" class="font-mono font-semibold">0</span>
                     </div>
-                    <div class="flex justify-between border-t pt-2">
+                    <div class="flex justify-between border-t pt-1">
                         <span class="text-gray-600">Cache Created:</span>
                         <span id="total-cache-creation-tokens" class="font-mono text-orange-600 font-semibold">0</span>
                     </div>
@@ -184,17 +185,28 @@
                         <span class="text-gray-600">Cache Read:</span>
                         <span id="total-cache-read-tokens" class="font-mono text-green-600 font-semibold">0</span>
                     </div>
-                    <div class="flex justify-between border-t pt-2 font-semibold">
+                    <div class="flex justify-between border-t pt-1 font-semibold">
                         <span class="text-gray-800">Total:</span>
                         <span id="total-all-tokens" class="font-mono">0</span>
+                    </div>
+                    <!-- Cost Information -->
+                    <div class="border-t pt-1 space-y-1">
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">Request:</span>
+                            <span id="request-cost" class="font-mono font-semibold text-blue-600">$0.000</span>
+                        </div>
+                        <div class="flex justify-between items-center font-semibold">
+                            <span class="text-gray-800">Total:</span>
+                            <span id="total-cost" class="font-mono text-sm" title="Click for breakdown">$0.000</span>
+                        </div>
                     </div>
                 </div>
             </div>
 
             <!-- System Information Card -->
-            <div id="system-info-card" class="bg-white rounded-lg shadow-md p-4">
-                <h3 class="font-semibold text-gray-800 mb-3">System Information</h3>
-                <div id="system-info-content" class="space-y-3 text-sm">
+            <div id="system-info-card" class="bg-white rounded-lg shadow-md p-3">
+                <h3 class="font-semibold text-gray-800 text-sm mb-2">System Information</h3>
+                <div id="system-info-content" class="space-y-1 text-xs">
                     <div class="text-gray-500 italic">Initializing...</div>
                 </div>
             </div>
@@ -207,6 +219,10 @@
         let ws = null;
         let reconnectAttempts = 0;
         const maxReconnectAttempts = 5;
+
+        // Agent streaming state
+        let currentAgentMessage = null;
+        let agentMessageBuffer = '';
 
         // DOM elements
         const chatContainer = document.getElementById('chat-container');
@@ -266,33 +282,56 @@
         function handleMessage(data) {
             switch(data.type) {
                 case 'agent_message':
+                    // Final complete message (fallback for non-streaming)
+                    finalizeAgentMessage();
                     addAgentMessage(data.content);
                     hideWorkingIndicator();
+                    updateAgentStatus('idle');
                     break;
                 case 'agent_delta':
+                    // Streaming text chunk - accumulate and display
+                    if (data.delta) {
+                        appendAgentDelta(data.delta);
+                    }
                     showWorkingIndicator();
+                    updateAgentStatus('generating', 'Generating response...');
                     break;
                 case 'status':
                     updateSystemInfo(data.content);
                     break;
                 case 'tool':
                     addToolUseIndicator(data.tool, data.status);
+                    // Update agent status based on tool status
+                    if (data.status === 'running') {
+                        updateAgentStatus('tool_running', `Using tool: ${data.tool}`);
+                    } else if (data.status === 'completed' || data.status === 'complete') {
+                        updateAgentStatus('tool_complete', 'Tool completed');
+                    } else if (data.status === 'failed') {
+                        updateAgentStatus('tool_failed', `Tool failed: ${data.tool}`);
+                    }
                     break;
                 case 'result':
                     addExecutionResult(data.data, data.success);
                     break;
                 case 'error':
                     addErrorMessage(data.error);
+                    finalizeAgentMessage();
                     hideWorkingIndicator();
+                    updateAgentStatus('error', 'Error occurred');
                     break;
                 case 'usage':
-                    updateTokenUsage(data.usage);
+                    updateTokenUsage(data.usage, data.cost);
+                    // When usage arrives, the response is complete
+                    finalizeAgentMessage();
+                    hideWorkingIndicator();
                     break;
                 case 'typing':
                     if (data.is_typing) {
                         showWorkingIndicator();
+                        updateAgentStatus('thinking', 'Thinking...');
                     } else {
                         hideWorkingIndicator();
+                        updateAgentStatus('idle');
                     }
                     break;
                 case 'pong':
@@ -316,10 +355,353 @@
             scrollToBottom();
         }
 
-        // Add agent message
+        // Append streaming delta to current agent message
+        function appendAgentDelta(delta) {
+            // Remove thinking indicator on first delta
+            if (!currentAgentMessage) {
+                removeThinkingIndicator();
+
+                // Create new message container
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'flex justify-start agent-streaming';
+                messageDiv.innerHTML = `
+                    <div class="bg-gray-200 text-gray-800 rounded-lg px-4 py-3 max-w-2xl shadow-md prose prose-sm max-w-none">
+                        <div class="agent-content"></div>
+                    </div>
+                `;
+                chatContainer.appendChild(messageDiv);
+                currentAgentMessage = messageDiv.querySelector('.agent-content');
+                agentMessageBuffer = '';
+            }
+
+            // Accumulate delta
+            agentMessageBuffer += delta;
+
+            // Update display with markdown rendering
+            const htmlContent = marked.parse(agentMessageBuffer);
+            currentAgentMessage.innerHTML = htmlContent;
+
+            scrollToBottom();
+        }
+
+        // Extract quick action suggestions from agent message
+        function extractQuickActions(content) {
+            const actions = [];
+
+            // Pattern 1: Extract quoted commands like 'show me the code'
+            const quotedMatches = content.matchAll(/['"]([^'"]+)['"]/g);
+            for (const match of quotedMatches) {
+                const text = match[1].trim();
+                // Only include if it looks like a command (not just quoted text)
+                if (text.length < 50 && /^(show|get|create|add|find|list|generate)/i.test(text)) {
+                    actions.push({ label: text, command: text });
+                }
+            }
+
+            // Pattern 2: Detect "Would you like to see/view/get X?" sentences
+            const seePattern = /Would you like to (see|view|get|show).*?(code|script|data|results?)/gi;
+            const seeMatches = content.matchAll(seePattern);
+            for (const match of seeMatches) {
+                const action = match[2]; // "code", "script", "data", "results"
+                actions.push({
+                    label: `show me the ${action}`,
+                    command: `show me the ${action}`
+                });
+            }
+
+            // Pattern 3: Extract from "Would you like me to:" list
+            const listMatch = content.match(/Would you like me to:(.*?)(?:\n\n|$)/s);
+            if (listMatch) {
+                const items = listMatch[1].match(/[•\-*]\s*(.+?)(?:\?|\.)?$/gm);
+                if (items) {
+                    items.forEach(item => {
+                        const text = item.replace(/^[•\-*]\s*/, '').trim().replace(/[\?\.]$/, '');
+                        if (text.length < 80) {
+                            // Create short label
+                            let label = text;
+                            if (text.length > 40) {
+                                label = text.substring(0, 37) + '...';
+                            }
+                            actions.push({ label, command: text });
+                        }
+                    });
+                }
+            }
+
+            // Remove duplicates and synonyms
+            const unique = [];
+            const seen = new Set();
+
+            // Synonym groups for deduplication
+            const synonyms = {
+                'code': ['script', 'code', 'program'],
+                'show': ['show', 'display', 'view', 'see'],
+                'get': ['get', 'fetch', 'retrieve'],
+                'create': ['create', 'make', 'generate', 'build']
+            };
+
+            function normalizeCommand(cmd) {
+                // Remove common filler words
+                let normalized = cmd.toLowerCase()
+                    .replace(/\b(me|the|my|a|an)\b/g, '')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+
+                // Replace synonyms with canonical form
+                for (const [canonical, group] of Object.entries(synonyms)) {
+                    for (const synonym of group) {
+                        if (normalized.includes(synonym)) {
+                            normalized = normalized.replace(new RegExp(`\\b${synonym}\\b`, 'g'), canonical);
+                        }
+                    }
+                }
+
+                return normalized;
+            }
+
+            for (const action of actions) {
+                const normalized = normalizeCommand(action.command);
+                if (!seen.has(normalized)) {
+                    seen.add(normalized);
+                    unique.push(action);
+                }
+            }
+
+            // Clean markdown syntax from labels
+            unique.forEach(action => {
+                action.label = action.label
+                    .replace(/\*\*([^*]+)\*\*/g, '$1')  // Remove **bold**
+                    .replace(/\*([^*]+)\*/g, '$1')       // Remove *italic*
+                    .replace(/`([^`]+)`/g, '$1')         // Remove `code`
+                    .trim();
+            });
+
+            return unique;
+        }
+
+        // Add quick action buttons to message
+        function addQuickActionButtons(container, actions) {
+            if (!actions || actions.length === 0) return;
+
+            const buttonsDiv = document.createElement('div');
+            buttonsDiv.className = 'flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-300';
+
+            actions.forEach(action => {
+                const btn = document.createElement('button');
+                btn.className = 'px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-lg transition-colors shadow-sm flex items-center gap-1.5';
+                btn.innerHTML = `
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"></path>
+                    </svg>
+                    <span>${escapeHtml(action.label)}</span>
+                `;
+                btn.onclick = () => {
+                    // Set input value and send
+                    messageInput.value = action.command;
+                    sendMessage();
+                };
+                buttonsDiv.appendChild(btn);
+            });
+
+            container.appendChild(buttonsDiv);
+        }
+
+        // Finalize streaming agent message
+        // Make long code blocks and lists collapsible
+        function makeContentCollapsible(container, maxLines = 10) {
+            // Find all code blocks
+            const codeBlocks = container.querySelectorAll('pre');
+            codeBlocks.forEach(pre => {
+                const code = pre.querySelector('code');
+                const text = pre.textContent;
+                const lines = text.split('\n');
+
+                if (lines.length > maxLines) {
+                    const previewText = lines.slice(0, maxLines).join('\n') + '\n...';
+                    const fullText = text;
+                    const uniqueId = 'code-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+
+                    // Create wrapper
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'relative my-2';
+                    wrapper.innerHTML = `
+                        <div class="flex gap-2 mb-2">
+                            <button onclick="window.toggleCodeCollapse('${uniqueId}')"
+                                    class="px-2 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded">
+                                <span id="${uniqueId}-btn">Expand ↓ (${lines.length} lines)</span>
+                            </button>
+                            <button onclick="window.copyCode('${uniqueId}', event)"
+                                    class="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded">
+                                Copy
+                            </button>
+                        </div>
+                        <pre id="${uniqueId}-preview" class="code-preview">${previewText}</pre>
+                        <pre id="${uniqueId}-full" class="code-full hidden">${fullText}</pre>
+                        <textarea id="${uniqueId}-data" class="hidden">${fullText}</textarea>
+                    `;
+
+                    pre.replaceWith(wrapper);
+                }
+            });
+
+            // Find long paragraphs with campaign/data listings (heuristic)
+            const paragraphs = container.querySelectorAll('p');
+            paragraphs.forEach(p => {
+                const text = p.textContent;
+                const lines = text.split('\n').filter(l => l.trim());
+
+                // If paragraph has multiple lines that look like data (contain "-" or ":")
+                const dataLines = lines.filter(l => (l.includes(' - ') || l.includes(':')) && l.length > 20);
+
+                if (dataLines.length > 8) {
+                    const previewLines = lines.slice(0, 8).join('\n') + '\n...';
+                    const fullText = text;
+                    const uniqueId = 'data-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'relative my-2';
+                    wrapper.innerHTML = `
+                        <div class="flex gap-2 mb-2">
+                            <button onclick="window.toggleDataCollapse('${uniqueId}')"
+                                    class="px-2 py-1 bg-gray-600 hover:bg-gray-500 text-white text-xs rounded">
+                                <span id="${uniqueId}-btn">Expand ↓ (${lines.length} items)</span>
+                            </button>
+                            <button onclick="window.copyData('${uniqueId}', event)"
+                                    class="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded">
+                                Copy
+                            </button>
+                        </div>
+                        <div id="${uniqueId}-preview" class="data-preview bg-gray-100 p-3 rounded text-sm whitespace-pre-wrap">${previewLines}</div>
+                        <div id="${uniqueId}-full" class="data-full bg-gray-100 p-3 rounded text-sm whitespace-pre-wrap hidden">${fullText}</div>
+                        <textarea id="${uniqueId}-data" class="hidden">${fullText}</textarea>
+                    `;
+
+                    p.replaceWith(wrapper);
+                }
+            });
+        }
+
+        // Toggle data collapse/expand
+        window.toggleDataCollapse = function(id) {
+            const preview = document.getElementById(`${id}-preview`);
+            const full = document.getElementById(`${id}-full`);
+            const btn = document.getElementById(`${id}-btn`);
+
+            if (preview.classList.contains('hidden')) {
+                preview.classList.remove('hidden');
+                full.classList.add('hidden');
+                const lines = full.textContent.split('\n').filter(l => l.trim()).length;
+                btn.textContent = `Expand ↓ (${lines} items)`;
+            } else {
+                preview.classList.add('hidden');
+                full.classList.remove('hidden');
+                btn.textContent = 'Collapse ↑';
+            }
+        };
+
+        // Copy data to clipboard (modern Clipboard API)
+        window.copyData = function(id, event) {
+            const textarea = document.getElementById(`${id}-data`);
+            if (textarea) {
+                navigator.clipboard.writeText(textarea.value).then(() => {
+                    // Visual feedback
+                    const btn = event ? event.target.closest('button') : null;
+                    if (btn) {
+                        const originalText = btn.textContent;
+                        btn.textContent = 'Copied!';
+                        btn.classList.remove('bg-blue-600', 'hover:bg-blue-500');
+                        btn.classList.add('bg-green-600');
+                        setTimeout(() => {
+                            btn.textContent = originalText;
+                            btn.classList.remove('bg-green-600');
+                            btn.classList.add('bg-blue-600', 'hover:bg-blue-500');
+                        }, 2000);
+                    }
+                }).catch(err => {
+                    console.error('Failed to copy:', err);
+                });
+            }
+        };
+
+        // Toggle code collapse/expand
+        window.toggleCodeCollapse = function(id) {
+            const preview = document.getElementById(`${id}-preview`);
+            const full = document.getElementById(`${id}-full`);
+            const btn = document.getElementById(`${id}-btn`);
+
+            if (preview.classList.contains('hidden')) {
+                preview.classList.remove('hidden');
+                full.classList.add('hidden');
+                const lines = full.textContent.split('\n').length;
+                btn.textContent = `Expand ↓ (${lines} lines)`;
+            } else {
+                preview.classList.add('hidden');
+                full.classList.remove('hidden');
+                btn.textContent = 'Collapse ↑';
+            }
+        };
+
+        // Copy code to clipboard (modern Clipboard API)
+        window.copyCode = function(id, event) {
+            const textarea = document.getElementById(`${id}-data`);
+            if (textarea) {
+                navigator.clipboard.writeText(textarea.value).then(() => {
+                    // Visual feedback
+                    const btn = event ? event.target.closest('button') : null;
+                    if (btn) {
+                        const originalText = btn.textContent;
+                        btn.textContent = 'Copied!';
+                        btn.classList.remove('bg-blue-600', 'hover:bg-blue-500');
+                        btn.classList.add('bg-green-600');
+                        setTimeout(() => {
+                            btn.textContent = originalText;
+                            btn.classList.remove('bg-green-600');
+                            btn.classList.add('bg-blue-600', 'hover:bg-blue-500');
+                        }, 2000);
+                    }
+                }).catch(err => {
+                    console.error('Failed to copy:', err);
+                });
+            }
+        };
+
+        function finalizeAgentMessage() {
+            if (currentAgentMessage) {
+                // Final render with complete markdown
+                const htmlContent = marked.parse(agentMessageBuffer);
+                currentAgentMessage.innerHTML = htmlContent;
+
+                // Make long code blocks collapsible
+                makeContentCollapsible(currentAgentMessage, 10);
+
+                // Extract and add quick action buttons
+                const actions = extractQuickActions(agentMessageBuffer);
+                if (actions.length > 0) {
+                    const messageContainer = currentAgentMessage.closest('.bg-gray-200');
+                    if (messageContainer) {
+                        addQuickActionButtons(messageContainer, actions);
+                    }
+                }
+
+                // Remove streaming class
+                const streamingDiv = chatContainer.querySelector('.agent-streaming');
+                if (streamingDiv) {
+                    streamingDiv.classList.remove('agent-streaming');
+                }
+
+                // Reset state
+                currentAgentMessage = null;
+                agentMessageBuffer = '';
+            }
+        }
+
+        // Add agent message (non-streaming fallback)
         function addAgentMessage(content) {
             // Remove thinking indicator if present
             removeThinkingIndicator();
+
+            // Finalize any streaming message first
+            finalizeAgentMessage();
 
             const messageDiv = document.createElement('div');
             messageDiv.className = 'flex justify-start';
@@ -333,6 +715,22 @@
                 </div>
             `;
             chatContainer.appendChild(messageDiv);
+
+            // Make long code blocks collapsible
+            const contentContainer = messageDiv.querySelector('.bg-gray-200');
+            if (contentContainer) {
+                makeContentCollapsible(contentContainer, 10);
+            }
+
+            // Extract and add quick action buttons
+            const actions = extractQuickActions(content);
+            if (actions.length > 0) {
+                const container = messageDiv.querySelector('.bg-gray-200');
+                if (container) {
+                    addQuickActionButtons(container, actions);
+                }
+            }
+
             scrollToBottom();
         }
 
@@ -351,30 +749,79 @@
 
         // Add tool use indicator
         function addToolUseIndicator(toolName, status = 'running') {
-            const indicatorDiv = document.createElement('div');
-            indicatorDiv.className = 'flex justify-start tool-indicator';
-            indicatorDiv.dataset.toolName = toolName;
-
             // Backend sends 'completed', accept both 'complete' and 'completed'
             const isSuccess = status === 'complete' || status === 'completed';
             const isFailed = status === 'failed';
 
-            const statusColor = status === 'running' ? 'bg-yellow-100 border-yellow-400 text-yellow-800' :
-                               isSuccess ? 'bg-green-100 border-green-400 text-green-800' :
-                               'bg-red-100 border-red-400 text-red-800';
+            // Find existing indicator for this tool
+            let indicatorDiv = chatContainer.querySelector(`.tool-indicator[data-tool-name="${toolName}"]`);
 
-            const statusIcon = status === 'running' ? '⚙️' : isSuccess ? '✅' : '❌';
+            if (!indicatorDiv) {
+                // Create new compact indicator
+                indicatorDiv = document.createElement('div');
+                indicatorDiv.className = 'flex justify-start tool-indicator';
+                indicatorDiv.dataset.toolName = toolName;
+                indicatorDiv.dataset.expanded = 'false';
 
-            indicatorDiv.innerHTML = `
-                <div class="${statusColor} border rounded-lg px-4 py-2 max-w-2xl shadow-sm">
-                    <div class="flex items-center gap-2">
-                        <span class="text-lg">${statusIcon}</span>
-                        <span class="font-medium">Using tool: ${escapeHtml(toolName)}</span>
-                        ${status === 'running' ? '<span class="pulse-dot ml-2">...</span>' : ''}
+                const statusIcon = status === 'running' ? '🔧' : isSuccess ? '✓' : '✗';
+                const statusText = status === 'running' ? '...' : '';
+
+                indicatorDiv.innerHTML = `
+                    <div class="bg-gray-100 border border-gray-300 rounded px-3 py-1 shadow-sm cursor-pointer hover:bg-gray-200 transition-colors tool-compact">
+                        <div class="flex items-center gap-2 text-sm">
+                            <span class="tool-icon">${statusIcon}</span>
+                            <span class="font-medium text-gray-700">${escapeHtml(toolName)}</span>
+                            <span class="tool-status text-gray-500">${statusText}</span>
+                        </div>
+                        <div class="tool-details hidden mt-2 pt-2 border-t border-gray-300 text-xs text-gray-600">
+                            <div class="space-y-1">
+                                <div><strong>Status:</strong> <span class="tool-status-detail">${status}</span></div>
+                            </div>
+                        </div>
                     </div>
-                </div>
-            `;
-            chatContainer.appendChild(indicatorDiv);
+                `;
+
+                // Toggle expand/collapse on click
+                indicatorDiv.querySelector('.tool-compact').addEventListener('click', function() {
+                    const details = this.querySelector('.tool-details');
+                    const isExpanded = indicatorDiv.dataset.expanded === 'true';
+
+                    if (isExpanded) {
+                        details.classList.add('hidden');
+                        indicatorDiv.dataset.expanded = 'false';
+                    } else {
+                        details.classList.remove('hidden');
+                        indicatorDiv.dataset.expanded = 'true';
+                    }
+                });
+
+                chatContainer.appendChild(indicatorDiv);
+            } else {
+                // Update existing indicator
+                const icon = indicatorDiv.querySelector('.tool-icon');
+                const statusSpan = indicatorDiv.querySelector('.tool-status');
+                const statusDetail = indicatorDiv.querySelector('.tool-status-detail');
+                const compact = indicatorDiv.querySelector('.tool-compact');
+
+                if (isSuccess) {
+                    icon.textContent = '✓';
+                    statusSpan.textContent = '';
+                    compact.classList.remove('bg-gray-100', 'hover:bg-gray-200');
+                    compact.classList.add('bg-green-50', 'border-green-400', 'hover:bg-green-100');
+                    icon.classList.add('text-green-600');
+                } else if (isFailed) {
+                    icon.textContent = '✗';
+                    statusSpan.textContent = 'failed';
+                    compact.classList.remove('bg-gray-100', 'hover:bg-gray-200');
+                    compact.classList.add('bg-red-50', 'border-red-400', 'hover:bg-red-100');
+                    icon.classList.add('text-red-600');
+                }
+
+                if (statusDetail) {
+                    statusDetail.textContent = status;
+                }
+            }
+
             scrollToBottom();
         }
 
@@ -414,7 +861,49 @@
 
             let content;
             if (typeof result === 'object') {
-                content = `<pre class="mt-2">${syntaxHighlightJSON(result)}</pre>`;
+                const fullJSON = JSON.stringify(result, null, 2);
+                const lines = fullJSON.split('\n');
+                const isLarge = lines.length > 10;
+
+                if (isLarge) {
+                    // Show preview with expand button
+                    const preview = lines.slice(0, 10).join('\n') + '\n  ...';
+                    const uniqueId = 'result-' + Date.now();
+
+                    content = `
+                        <div class="mt-2 space-y-2">
+                            <div class="flex items-center gap-2">
+                                <button onclick="window.toggleJSONExpand('${uniqueId}')"
+                                        class="px-3 py-1 bg-gray-700 text-white rounded hover:bg-gray-600 text-xs font-medium transition-colors">
+                                    <span class="expand-icon-${uniqueId}">Expand ↓</span>
+                                </button>
+                                <button onclick="window.copyJSON('${uniqueId}', event)"
+                                        class="px-3 py-1 bg-gray-700 text-white rounded hover:bg-gray-600 text-xs font-medium transition-colors">
+                                    Copy
+                                </button>
+                                <span class="text-xs text-gray-600">${lines.length} lines</span>
+                            </div>
+                            <pre id="${uniqueId}-preview" class="json-preview">${syntaxHighlightJSON(JSON.parse(preview.replace('...', '')))}</pre>
+                            <pre id="${uniqueId}-full" class="json-full hidden">${syntaxHighlightJSON(result)}</pre>
+                            <textarea id="${uniqueId}-data" class="hidden">${escapeHtml(fullJSON)}</textarea>
+                        </div>
+                    `;
+                } else {
+                    // Small result - show directly with copy button
+                    const uniqueId = 'result-' + Date.now();
+                    content = `
+                        <div class="mt-2 space-y-2">
+                            <div class="flex items-center gap-2">
+                                <button onclick="window.copyJSON('${uniqueId}', event)"
+                                        class="px-3 py-1 bg-gray-700 text-white rounded hover:bg-gray-600 text-xs font-medium transition-colors">
+                                    Copy
+                                </button>
+                            </div>
+                            <pre>${syntaxHighlightJSON(result)}</pre>
+                            <textarea id="${uniqueId}-data" class="hidden">${escapeHtml(fullJSON)}</textarea>
+                        </div>
+                    `;
+                }
             } else {
                 content = `<p class="mt-2 text-gray-800 whitespace-pre-wrap">${escapeHtml(String(result))}</p>`;
             }
@@ -428,6 +917,49 @@
             chatContainer.appendChild(resultDiv);
             scrollToBottom();
         }
+
+        // Toggle JSON expand/collapse
+        window.toggleJSONExpand = function(id) {
+            const preview = document.getElementById(`${id}-preview`);
+            const full = document.getElementById(`${id}-full`);
+            const icon = document.querySelector(`.expand-icon-${id}`);
+
+            if (preview && full && icon) {
+                if (preview.classList.contains('hidden')) {
+                    preview.classList.remove('hidden');
+                    full.classList.add('hidden');
+                    icon.textContent = 'Expand ↓';
+                } else {
+                    preview.classList.add('hidden');
+                    full.classList.remove('hidden');
+                    icon.textContent = 'Collapse ↑';
+                }
+            }
+        };
+
+        // Copy JSON to clipboard (modern Clipboard API)
+        window.copyJSON = function(id, event) {
+            const textarea = document.getElementById(`${id}-data`);
+            if (textarea) {
+                navigator.clipboard.writeText(textarea.value).then(() => {
+                    // Visual feedback
+                    const btn = event ? event.target.closest('button') : null;
+                    if (btn) {
+                        const originalText = btn.textContent;
+                        btn.textContent = 'Copied!';
+                        btn.classList.remove('bg-gray-700', 'hover:bg-gray-600');
+                        btn.classList.add('bg-green-600');
+                        setTimeout(() => {
+                            btn.textContent = originalText;
+                            btn.classList.remove('bg-green-600');
+                            btn.classList.add('bg-gray-700', 'hover:bg-gray-600');
+                        }, 2000);
+                    }
+                }).catch(err => {
+                    console.error('Failed to copy:', err);
+                });
+            }
+        };
 
         // Add error message
         function addErrorMessage(error) {
@@ -443,24 +975,123 @@
             scrollToBottom();
         }
 
-        // Show "Agent is working" indicator
-        function showWorkingIndicator() {
-            const indicator = document.getElementById('agent-working-indicator');
-            if (indicator) {
-                indicator.classList.remove('hidden');
+        // Update agent status in sidebar with visual indicators
+        function updateAgentStatus(status, activity = '') {
+            const statusIndicator = document.getElementById('agent-status-indicator');
+            const statusText = document.getElementById('agent-status-text');
+            const currentActivity = document.getElementById('agent-current-activity');
+
+            if (!statusIndicator || !statusText || !currentActivity) return;
+
+            // Reset classes
+            statusIndicator.className = 'w-2 h-2 rounded-full';
+
+            switch(status) {
+                case 'idle':
+                    statusIndicator.classList.add('bg-gray-400');
+                    statusText.textContent = 'Idle';
+                    statusText.className = 'text-sm text-gray-600';
+                    currentActivity.classList.add('hidden');
+                    break;
+
+                case 'thinking':
+                    statusIndicator.classList.add('bg-blue-500', 'pulse-dot');
+                    statusText.textContent = 'Thinking...';
+                    statusText.className = 'text-sm text-blue-700 font-medium';
+                    currentActivity.classList.add('hidden');
+                    break;
+
+                case 'generating':
+                    statusIndicator.classList.add('bg-blue-500', 'animate-pulse');
+                    statusText.textContent = 'Generating response...';
+                    statusText.className = 'text-sm text-blue-700 font-medium';
+                    currentActivity.classList.add('hidden');
+                    break;
+
+                case 'tool_running':
+                    statusIndicator.classList.add('bg-yellow-500', 'animate-pulse');
+                    statusText.textContent = 'Using tool';
+                    statusText.className = 'text-sm text-yellow-700 font-medium';
+                    currentActivity.textContent = activity;
+                    currentActivity.classList.remove('hidden');
+                    break;
+
+                case 'tool_complete':
+                    statusIndicator.classList.add('bg-green-500');
+                    statusText.textContent = 'Tool completed';
+                    statusText.className = 'text-sm text-green-700 font-medium';
+                    currentActivity.classList.add('hidden');
+                    setTimeout(() => updateAgentStatus('idle'), 2000);
+                    break;
+
+                case 'tool_failed':
+                    statusIndicator.classList.add('bg-red-500');
+                    statusText.textContent = 'Tool failed';
+                    statusText.className = 'text-sm text-red-700 font-medium';
+                    currentActivity.textContent = activity;
+                    currentActivity.classList.remove('hidden');
+                    setTimeout(() => updateAgentStatus('idle'), 3000);
+                    break;
+
+                case 'error':
+                    statusIndicator.classList.add('bg-red-500');
+                    statusText.textContent = 'Error';
+                    statusText.className = 'text-sm text-red-700 font-medium';
+                    currentActivity.textContent = activity;
+                    currentActivity.classList.remove('hidden');
+                    break;
+
+                default:
+                    statusIndicator.classList.add('bg-gray-400');
+                    statusText.textContent = 'Unknown';
+                    statusText.className = 'text-sm text-gray-600';
+                    currentActivity.classList.add('hidden');
             }
         }
 
-        // Hide "Agent is working" indicator
+        // Legacy placeholder functions (kept for compatibility)
+        function showWorkingIndicator() {
+            // Now handled by updateAgentStatus
+        }
+
         function hideWorkingIndicator() {
-            const indicator = document.getElementById('agent-working-indicator');
-            if (indicator) {
-                indicator.classList.add('hidden');
+            // Now handled by updateAgentStatus
+        }
+
+        // Update agent status in sidebar
+        function updateAgentStatus(status, message = '') {
+            const indicator = document.getElementById('agent-status-indicator');
+            const text = document.getElementById('agent-status-text');
+            const activity = document.getElementById('agent-current-activity');
+
+            if (!indicator || !text || !activity) return;
+
+            // Map status to color and text
+            const statusMap = {
+                'idle': { color: 'bg-gray-400', text: 'Idle' },
+                'thinking': { color: 'bg-blue-500 animate-pulse', text: 'Thinking' },
+                'generating': { color: 'bg-purple-500 animate-pulse', text: 'Generating' },
+                'tool_running': { color: 'bg-yellow-500 animate-pulse', text: 'Using Tool' },
+                'tool_complete': { color: 'bg-green-500', text: 'Tool Complete' },
+                'tool_failed': { color: 'bg-red-500', text: 'Tool Failed' },
+                'error': { color: 'bg-red-500', text: 'Error' }
+            };
+
+            const config = statusMap[status] || statusMap['idle'];
+
+            indicator.className = `w-2 h-2 rounded-full ${config.color}`;
+            text.textContent = config.text;
+
+            if (message) {
+                activity.textContent = message;
+                activity.classList.remove('hidden');
+            } else {
+                activity.classList.add('hidden');
             }
         }
 
         // Update token usage display
-        function updateTokenUsage(usage) {
+        function updateTokenUsage(usage, cost) {
             document.getElementById('total-input-tokens').textContent = usage.total_input_tokens.toLocaleString();
             document.getElementById('total-output-tokens').textContent = usage.total_output_tokens.toLocaleString();
             document.getElementById('total-cache-creation-tokens').textContent = usage.total_cache_creation_tokens.toLocaleString();
@@ -469,6 +1100,50 @@
             // Calculate total (input + output, excluding cache metrics which are already counted in input)
             const total = usage.total_input_tokens + usage.total_output_tokens;
             document.getElementById('total-all-tokens').textContent = total.toLocaleString();
+
+            // Update costs if available
+            if (cost) {
+                const requestCostElem = document.getElementById('request-cost');
+                const totalCostElem = document.getElementById('total-cost');
+
+                // Format request cost
+                requestCostElem.textContent = formatCost(cost.request_cost);
+
+                // Format total cost with color coding
+                totalCostElem.textContent = formatCost(cost.total_cost);
+
+                // Color-code based on cache usage and cost
+                if (usage.cache_read_tokens > 0) {
+                    // Using cache - green
+                    totalCostElem.className = 'font-mono text-sm text-green-600';
+                } else if (cost.total_cost > 0.50) {
+                    // Expensive session - yellow/orange
+                    totalCostElem.className = 'font-mono text-sm text-orange-600';
+                } else {
+                    // Normal - default color
+                    totalCostElem.className = 'font-mono text-sm text-gray-800';
+                }
+
+                // Store breakdown for potential tooltip/modal
+                totalCostElem.dataset.breakdown = JSON.stringify(cost.total_breakdown);
+            }
+        }
+
+        // Format cost with appropriate precision
+        function formatCost(cost) {
+            if (cost < 0.01) {
+                // Show 3-4 decimal places for small amounts
+                const formatted = cost.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+                // Ensure at least 3 decimal places
+                const parts = formatted.split('.');
+                if (parts.length > 1 && parts[1].length < 3) {
+                    return `$${cost.toFixed(3)}`;
+                }
+                return `$${formatted}`;
+            } else {
+                // Standard 2 decimal places
+                return `$${cost.toFixed(2)}`;
+            }
         }
 
         // Update system information in sidebar
@@ -477,18 +1152,18 @@
             if (systemInfoContent && content) {
                 // Parse content if it's markdown-formatted system info
                 if (content.includes('E2B Sandbox:') || content.includes('**')) {
-                    // Convert markdown-style bold to HTML
+                    // Convert markdown-style bold to HTML (both with and without colon)
                     const htmlContent = content
-                        .replace(/\*\*([^*]+)\*\*:/g, '<strong>$1:</strong>')
+                        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
                         .replace(/`([^`]+)`/g, '<code class="bg-gray-100 px-1 rounded text-xs">$1</code>')
                         .split('\n')
                         .filter(line => line.trim())
-                        .map(line => `<div class="text-gray-700">${line}</div>`)
+                        .map(line => `<div class="text-xs text-gray-700 leading-tight">${line}</div>`)
                         .join('');
                     systemInfoContent.innerHTML = htmlContent;
                 } else {
                     // Regular status message
-                    systemInfoContent.innerHTML = `<div class="text-gray-600 italic">${escapeHtml(content)}</div>`;
+                    systemInfoContent.innerHTML = `<div class="text-xs text-gray-600 italic">${escapeHtml(content)}</div>`;
                 }
             }
         }

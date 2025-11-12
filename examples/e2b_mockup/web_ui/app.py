@@ -24,6 +24,7 @@ import logging
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 from datetime import datetime
+from decimal import Decimal
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
@@ -38,6 +39,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from agent_executor import AgentExecutor
 from script_templates import ScriptTemplates
 
+# Add current directory to path for local imports (pricing.py)
+sys.path.insert(0, str(Path(__file__).parent))
+from pricing import calculate_cost
+
 # Load environment variables
 load_dotenv()
 
@@ -47,6 +52,39 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+# JSON serialization helper for non-standard types
+def safe_json_dumps(obj: Any, **kwargs) -> str:
+    """
+    Safely serialize objects to JSON, handling datetime, Decimal, and other non-standard types.
+
+    Args:
+        obj: Object to serialize
+        **kwargs: Additional arguments to pass to json.dumps
+
+    Returns:
+        JSON string
+    """
+    def json_serializer(o):
+        """Handle non-standard types for JSON serialization."""
+        if isinstance(o, datetime):
+            return o.isoformat()
+        elif isinstance(o, Decimal):
+            return float(o)
+        elif isinstance(o, bytes):
+            return o.decode('utf-8', errors='replace')
+        elif hasattr(o, '__dict__'):
+            return o.__dict__
+        else:
+            return str(o)
+
+    try:
+        return json.dumps(obj, default=json_serializer, **kwargs)
+    except Exception as e:
+        logger.error(f"JSON serialization failed: {e}")
+        # Fall back to a simple string representation
+        return json.dumps({"error": "serialization_failed", "message": str(e), "data": str(obj)[:1000]})
 
 # Create FastAPI app
 app = FastAPI(
@@ -135,13 +173,22 @@ except Exception as e:
 - Provide summaries of results, not just raw data
 - Suggest follow-up queries that might be useful
 - When showing data, highlight key insights
+- **After executing a query successfully, ALWAYS offer to show the Python code**
+
+**Code Transparency:**
+
+After using the `execute_salesforce_query` tool successfully, you should:
+1. Present the query results
+2. Automatically mention that you can show the generated Python code
+3. Say something like: "Would you like to see the Python script I generated? Just ask 'show me the code'"
 
 **Examples:**
 
 User: "Show me recent leads"
 You: "I'll query the leads created recently. Let me fetch that data..."
 [Use execute_salesforce_query with script to get leads from last 30 days]
-"I found 45 leads created in the last 30 days. The most common status is 'New' with 28 leads..."
+"I found 45 leads created in the last 30 days. The most common status is 'New' with 28 leads...
+Would you like to see the Python script I generated? Just ask 'show me the code' or 'show the script'."
 
 User: "What data can I access?"
 You: "Let me discover what Salesforce objects are available..."
@@ -229,13 +276,44 @@ class AgentSession:
             self.claude_client = anthropic.AsyncAnthropic(api_key=anthropic_api_key)
 
             # Get model from environment or use default
-            self.claude_model = os.getenv('CLAUDE_MODEL', 'claude-sonnet-4-5-20250929')
+            model_env = os.getenv('CLAUDE_MODEL', 'claude-sonnet-4-5-20250929')
+
+            # Map short model names to full model IDs with dates
+            model_mapping = {
+                'claude-sonnet-4-5': 'claude-sonnet-4-5-20250929',
+                'claude-sonnet-4': 'claude-sonnet-4-20250514',
+                'claude-haiku-4-5': 'claude-haiku-4-5-20251001',
+                'claude-haiku-3-5': 'claude-3-5-haiku-20241022',
+                'claude-sonnet-3-5': 'claude-3-5-sonnet-20241022',
+            }
+
+            # Use mapping if short name provided, otherwise use as-is (for full IDs)
+            self.claude_model = model_mapping.get(model_env, model_env)
 
             # Get prompt caching preference (default: enabled)
             caching_env = os.getenv('ENABLE_PROMPT_CACHING', 'true').lower()
             self.enable_prompt_caching = caching_env in ('true', '1', 'yes', 'on')
 
-            logger.info(f"Claude async client initialized for session {self.session_id} with model {self.claude_model}, caching={self.enable_prompt_caching}")
+            # Check if model supports prompt caching
+            # According to Anthropic docs (https://docs.claude.com/en/docs/build-with-claude/prompt-caching)
+            # Models supporting caching: Opus 4.1/4/3, Sonnet 4.5/4/3.7, Haiku 4.5/3.5/3
+            self.model_supports_caching = any([
+                'claude-3-5-sonnet' in self.claude_model,
+                'claude-sonnet-4-5' in self.claude_model,
+                'claude-sonnet-4' in self.claude_model,
+                'claude-3-5-haiku' in self.claude_model,
+                'claude-haiku-4-5' in self.claude_model,  # Haiku 4.5 DOES support caching!
+                'claude-3-opus' in self.claude_model,
+                'claude-opus-4' in self.claude_model
+            ])
+
+            if self.enable_prompt_caching and not self.model_supports_caching:
+                logger.warning(
+                    f"Prompt caching enabled but model {self.claude_model} does not support it. "
+                    f"Caching only works with: Sonnet 3.5/4.5, Haiku 3.5, or Opus 3."
+                )
+
+            logger.info(f"Claude async client initialized for session {self.session_id} with model {self.claude_model}, caching={self.enable_prompt_caching}, model_supports_caching={self.model_supports_caching}")
         else:
             self.claude_client = None
             self.claude_model = None
@@ -251,6 +329,9 @@ class AgentSession:
         self.total_output_tokens = 0
         self.total_cache_creation_tokens = 0
         self.total_cache_read_tokens = 0
+
+        # Cost tracking (USD)
+        self.total_cost = 0.0
 
         logger.info(f"Created session {self.session_id}")
 
@@ -272,38 +353,67 @@ class AgentSession:
                 create_executor_with_sandbox
             )
 
-            # Send detailed initialization success message
+            # Send detailed initialization success message with system info for sidebar
             sandbox_id = self.executor.sandbox.sandbox_id
-            await self.send_status(f"Agent ready! (Sandbox: {sandbox_id})")
 
-            # Send welcome message with system info
-            import os
-            welcome_msg = (
-                "**System Information:**\n\n"
+            # Send system information to populate sidebar (not as a chat message)
+            # Determine caching status message
+            if self.enable_prompt_caching and self.model_supports_caching:
+                caching_status = "Enabled ✓ (Ephemeral, 5 min)"
+            elif self.enable_prompt_caching and not self.model_supports_caching:
+                caching_status = "⚠️ Enabled but NOT SUPPORTED by this model"
+            else:
+                caching_status = "Disabled ✗"
+
+            system_info = (
                 f"**E2B Sandbox:** `{sandbox_id}`\n"
                 f"**Database:** DuckDB with 180 test records\n"
                 f"**Salesforce Driver:** Loaded successfully\n"
                 f"**Mock API:** Running on `localhost:8000` (inside sandbox)\n"
-                f"**Available Objects:** Account, Lead, Opportunity\n\n"
+                f"**Available Objects:** Account, Lead, Opportunity, Campaign\n\n"
+                f"**Model:** {self.claude_model if self.claude_model else 'Pattern Matching (No API Key)'}\n"
+                f"**Prompt Caching:** {caching_status}\n\n"
                 f"**Environment:**\n"
                 f"- `SF_API_URL`: {self.executor.sandbox_sf_api_url}\n"
                 f"- `SF_API_KEY`: {'*' * 8} (configured)\n"
-                f"- `E2B_API_KEY`: {'*' * 8} (configured)\n\n"
-                "Ready to query your Salesforce data! Try asking:\n"
-                "- 'Get all leads'\n"
-                "- 'Show me leads from last 30 days'\n"
-                "- 'What objects are available?'"
+                f"- `E2B_API_KEY`: {'*' * 8} (configured)"
             )
-            await self.send_agent_message(welcome_msg)
+            await self.send_status(system_info)
 
             logger.info(f"Session {self.session_id} initialized with sandbox {sandbox_id}")
 
             return True
 
         except Exception as e:
-            error_msg = f"Failed to initialize agent: {str(e)}"
-            logger.error(f"Session {self.session_id}: {error_msg}")
-            await self.send_error(error_msg)
+            error_msg = str(e)
+
+            # Provide specific error messages for common initialization failures
+            if 'E2B_API_KEY' in error_msg or 'api_key' in error_msg.lower():
+                user_msg = (
+                    "❌ **E2B API Key Error**: Unable to initialize sandbox. "
+                    "Please ensure E2B_API_KEY is set in your .env file. "
+                    f"Get your key from https://e2b.dev/"
+                )
+            elif 'timeout' in error_msg.lower() or 'timed out' in error_msg.lower():
+                user_msg = (
+                    "⏱️ **E2B Sandbox Timeout**: Sandbox creation took too long. "
+                    "This might be due to high E2B load. Please refresh and try again."
+                )
+            elif 'network' in error_msg.lower() or 'connection' in error_msg.lower():
+                user_msg = (
+                    "🌐 **Network Error**: Unable to connect to E2B servers. "
+                    "Please check your internet connection and try again."
+                )
+            elif 'quota' in error_msg.lower() or 'limit' in error_msg.lower():
+                user_msg = (
+                    "⚠️ **E2B Quota Exceeded**: You've reached your E2B sandbox limit. "
+                    "Please wait for existing sandboxes to expire or upgrade your plan."
+                )
+            else:
+                user_msg = f"❌ **Failed to initialize agent**: {error_msg}"
+
+            logger.error(f"Session {self.session_id}: Initialization failed: {error_msg}", exc_info=True)
+            await self.send_error(user_msg)
             return False
 
     async def execute_tool_call(self, tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, Any]:
@@ -438,12 +548,64 @@ class AgentSession:
 
             return tool_result
 
-        except Exception as e:
-            logger.error(f"Tool execution failed: {str(e)}", exc_info=True)
+        except asyncio.TimeoutError:
+            error_msg = f"Tool '{tool_name}' timed out. The operation took too long to complete."
+            logger.error(f"Session {self.session_id}: {error_msg}")
             await self.send_tool_status(tool_name, "failed")
             return {
                 'success': False,
-                'error': str(e)
+                'error': error_msg
+            }
+
+        except Exception as e:
+            error_msg = str(e)
+
+            # Check if this is a sandbox timeout/expiration error
+            sandbox_expired = (
+                'timed out' in error_msg.lower() or
+                'timeout' in error_msg.lower() or
+                'expired' in error_msg.lower() or
+                'not found' in error_msg.lower() or
+                '502' in error_msg  # Bad Gateway often means sandbox is gone
+            )
+
+            if sandbox_expired and 'sandbox' in error_msg.lower():
+                logger.warning(f"Session {self.session_id}: Sandbox expired, attempting to recreate...")
+
+                # Notify user
+                await self.send_agent_message("⏱️ The sandbox has expired. Let me create a new one and retry...")
+
+                try:
+                    # Recreate the sandbox
+                    await self.initialize()
+
+                    # Retry the tool execution once
+                    logger.info(f"Session {self.session_id}: Retrying tool '{tool_name}' with new sandbox")
+                    return await self.execute_tool_call(tool_name, tool_input)
+
+                except Exception as retry_error:
+                    logger.error(f"Session {self.session_id}: Failed to recreate sandbox: {retry_error}")
+                    await self.send_tool_status(tool_name, "failed")
+                    return {
+                        'success': False,
+                        'error': f"Failed to recreate sandbox after timeout: {str(retry_error)}"
+                    }
+
+            # Provide specific error messages for common tool failures
+            if 'sandbox' in error_msg.lower():
+                user_error = f"E2B sandbox error during '{tool_name}': {error_msg}"
+            elif 'timeout' in error_msg.lower():
+                user_error = f"Timeout executing '{tool_name}': Operation took too long"
+            elif 'connection' in error_msg.lower() or 'network' in error_msg.lower():
+                user_error = f"Network error during '{tool_name}': Unable to connect to E2B"
+            else:
+                user_error = f"Tool execution error: {error_msg}"
+
+            logger.error(f"Session {self.session_id}: Tool '{tool_name}' failed: {error_msg}", exc_info=True)
+            await self.send_tool_status(tool_name, "failed")
+            return {
+                'success': False,
+                'error': user_error
             }
 
     async def process_message_with_claude(self, user_message: str):
@@ -463,7 +625,7 @@ class AgentSession:
             await self.send_typing(True)
 
             # Call Claude API with streaming
-            max_iterations = 5  # Prevent infinite loops
+            max_iterations = 15  # Allow enough iterations for complex multi-tool queries
             iteration = 0
 
             while iteration < max_iterations:
@@ -482,9 +644,11 @@ class AgentSession:
                             "cache_control": {"type": "ephemeral"}
                         }
                     ]
+                    logger.info(f"Session {self.session_id}: Caching enabled, system_param format: list with cache_control")
                 else:
                     # Standard system prompt (no caching)
                     system_param = CLAUDE_SYSTEM_PROMPT
+                    logger.info(f"Session {self.session_id}: Caching disabled, system_param format: string")
 
                 async with self.claude_client.messages.stream(
                     model=self.claude_model,
@@ -515,14 +679,83 @@ class AgentSession:
                 # Track token usage
                 if hasattr(final_message, 'usage') and final_message.usage:
                     usage = final_message.usage
+
+                    # Log the complete usage object for debugging
+                    logger.info(f"Session {self.session_id} - Claude API usage object: {usage}")
+                    logger.info(f"  - input_tokens: {usage.input_tokens}")
+                    logger.info(f"  - output_tokens: {usage.output_tokens}")
+
+                    # Track cache metrics (handle both old and new SDK formats)
+                    # New SDK (0.39+): usage.cache_creation.ephemeral_5m_input_tokens / ephemeral_1h_input_tokens
+                    # Old SDK: usage.cache_creation_input_tokens (flat structure)
+                    cache_creation = 0
+                    cache_read = 0
+
+                    # Try new SDK format first (nested cache_creation object)
+                    if hasattr(usage, 'cache_creation') and usage.cache_creation:
+                        cache_obj = usage.cache_creation
+                        # Log the cache_creation object for debugging
+                        logger.info(f"  - cache_creation object: {cache_obj}")
+
+                        # Try ephemeral_5m first (5-minute cache)
+                        ephemeral_5m = getattr(cache_obj, 'ephemeral_5m_input_tokens', 0) or 0
+                        # Try ephemeral_1h (1-hour cache)
+                        ephemeral_1h = getattr(cache_obj, 'ephemeral_1h_input_tokens', 0) or 0
+
+                        # Total cache creation is sum of both TTLs
+                        cache_creation = ephemeral_5m + ephemeral_1h
+
+                        if ephemeral_5m > 0:
+                            logger.info(f"  - ephemeral_5m_input_tokens: {ephemeral_5m} (5-minute cache)")
+                        if ephemeral_1h > 0:
+                            logger.info(f"  - ephemeral_1h_input_tokens: {ephemeral_1h} (1-hour cache)")
+
+                    # Fall back to old SDK format (flat structure)
+                    if cache_creation == 0:
+                        cache_creation = getattr(usage, 'cache_creation_input_tokens', 0) or 0
+                        if cache_creation > 0:
+                            logger.info(f"  - cache_creation_input_tokens (old format): {cache_creation}")
+
+                    # Cache read tokens (same in both formats)
+                    cache_read = getattr(usage, 'cache_read_input_tokens', 0) or 0
+
+                    # Log cache metrics summary
+                    if cache_creation > 0:
+                        logger.info(f"  - TOTAL cache_creation: {cache_creation} (CACHE CREATED)")
+                    if cache_read > 0:
+                        logger.info(f"  - cache_read_input_tokens: {cache_read} (CACHE HIT!)")
+
+                    if cache_creation == 0 and cache_read == 0 and self.enable_prompt_caching:
+                        logger.warning(f"  - No cache metrics found. Caching enabled: {self.enable_prompt_caching}")
+                        logger.warning(f"  - Usage object attributes: {dir(usage)}")
+
                     self.total_input_tokens += usage.input_tokens
                     self.total_output_tokens += usage.output_tokens
-
-                    # Track cache metrics (if available)
-                    cache_creation = getattr(usage, 'cache_creation_input_tokens', 0) or 0
-                    cache_read = getattr(usage, 'cache_read_input_tokens', 0) or 0
                     self.total_cache_creation_tokens += cache_creation
                     self.total_cache_read_tokens += cache_read
+
+                    # Calculate costs for this request
+                    request_usage = {
+                        "input_tokens": usage.input_tokens,
+                        "cache_creation_input_tokens": cache_creation,
+                        "cache_read_input_tokens": cache_read,
+                        "output_tokens": usage.output_tokens
+                    }
+                    request_cost = calculate_cost(request_usage, self.claude_model)
+
+                    # Calculate total session cost
+                    total_usage = {
+                        "input_tokens": self.total_input_tokens,
+                        "cache_creation_input_tokens": self.total_cache_creation_tokens,
+                        "cache_read_input_tokens": self.total_cache_read_tokens,
+                        "output_tokens": self.total_output_tokens
+                    }
+                    total_cost_breakdown = calculate_cost(total_usage, self.claude_model)
+                    self.total_cost = total_cost_breakdown['total_cost']
+
+                    # Log cost information
+                    logger.info(f"  - Request cost: ${request_cost['total_cost']:.4f}")
+                    logger.info(f"  - Total session cost: ${self.total_cost:.4f}")
 
                     # Send usage update to frontend (safely)
                     await self._safe_send({
@@ -537,36 +770,55 @@ class AgentSession:
                             "total_cache_creation_tokens": self.total_cache_creation_tokens,
                             "total_cache_read_tokens": self.total_cache_read_tokens
                         },
+                        "cost": {
+                            "request_cost": request_cost['total_cost'],
+                            "request_breakdown": request_cost,
+                            "total_cost": self.total_cost,
+                            "total_breakdown": total_cost_breakdown
+                        },
                         "timestamp": datetime.now().isoformat()
                     })
 
                 # Check if Claude wants to use tools
                 if final_message.stop_reason == "tool_use":
+                    logger.info(f"Session {self.session_id}: Claude requested tool use, processing...")
 
                     # Execute each tool call
                     tool_results = []
 
-                    for block in final_message.content:
-                        if block.type == "tool_use":
-                            tool_name = block.name
-                            tool_input = block.input
-                            tool_id = block.id
+                    try:
+                        for block in final_message.content:
+                            if block.type == "tool_use":
+                                tool_name = block.name
+                                tool_input = block.input
+                                tool_id = block.id
 
-                            logger.info(f"Executing tool: {tool_name}")
+                                logger.info(f"Executing tool: {tool_name}")
 
-                            # Execute tool
-                            tool_result = await self.execute_tool_call(
-                                tool_name,
-                                tool_input
-                            )
+                                # Execute tool
+                                tool_result = await self.execute_tool_call(
+                                    tool_name,
+                                    tool_input
+                                )
 
-                            tool_results.append({
-                                "type": "tool_result",
-                                "tool_use_id": tool_id,
-                                "content": json.dumps(tool_result)
-                            })
+                                logger.info(f"Tool {tool_name} completed, serializing result...")
+
+                                # Use safe JSON serialization to handle datetime, Decimal, etc.
+                                tool_results.append({
+                                    "type": "tool_result",
+                                    "tool_use_id": tool_id,
+                                    "content": safe_json_dumps(tool_result)
+                                })
+
+                                logger.info(f"Tool {tool_name} result serialized successfully")
+
+                    except Exception as tool_error:
+                        logger.error(f"Session {self.session_id}: Error processing tools: {tool_error}", exc_info=True)
+                        await self.send_error(f"Tool execution error: {str(tool_error)}")
+                        break  # Exit the while loop on tool error
 
                     # Add assistant message and tool results to history
+                    logger.info(f"Session {self.session_id}: Adding {len(tool_results)} tool results to conversation history")
                     self.conversation_history.append({
                         "role": "assistant",
                         "content": final_message.content
@@ -578,6 +830,7 @@ class AgentSession:
                     })
 
                     # Continue loop to get Claude's response to tool results
+                    logger.info(f"Session {self.session_id}: Continuing conversation loop (iteration {iteration}/{max_iterations})...")
                     continue
 
                 else:
@@ -590,10 +843,19 @@ class AgentSession:
                             "content": response_text
                         })
 
-                        # Send complete message
-                        await self.send_agent_message(response_text)
+                        # Note: Don't send agent_message here - frontend already has
+                        # the complete message from streaming agent_delta events
 
                     break
+
+            # Check if we hit max iterations without a final response
+            if iteration >= max_iterations:
+                logger.warning(f"Session {self.session_id}: Reached max iterations ({max_iterations}) without final response")
+                await self.send_agent_message(
+                    "⚠️ I reached the maximum number of conversation turns. "
+                    "The query was complex and required many steps. Please try asking your question again, "
+                    "or try breaking it into smaller parts."
+                )
 
             await self.send_typing(False)
 
@@ -603,23 +865,65 @@ class AgentSession:
 
             if 'overloaded' in str(e).lower() or error_type == 'overloaded_error':
                 user_msg = (
-                    "⚠️ Claude API is temporarily overloaded (high traffic). "
+                    "⚠️ **Claude API is temporarily overloaded** (high traffic). "
                     "Please wait 30-60 seconds and try again. Your session is still active."
                 )
+                logger.warning(f"Session {self.session_id}: Claude API overloaded")
             elif e.status_code == 429:
-                user_msg = "⚠️ Rate limit reached. Please wait a moment and try again."
+                user_msg = (
+                    "⚠️ **Rate limit reached**. The API is receiving too many requests. "
+                    "Please wait a moment and try again."
+                )
+                logger.warning(f"Session {self.session_id}: Rate limit hit (429)")
             elif e.status_code == 401:
-                user_msg = "❌ Authentication error. Please check your ANTHROPIC_API_KEY."
+                user_msg = (
+                    "❌ **Authentication error**. Your ANTHROPIC_API_KEY is invalid or expired. "
+                    "Please check your .env file."
+                )
+                logger.error(f"Session {self.session_id}: Authentication failed (401)")
+            elif e.status_code == 500:
+                user_msg = (
+                    "❌ **Claude API server error**. The API is experiencing internal issues. "
+                    "Please try again in a few moments."
+                )
+                logger.error(f"Session {self.session_id}: Claude API 500 error")
+            elif e.status_code == 503:
+                user_msg = (
+                    "⚠️ **Service temporarily unavailable**. The Claude API is down for maintenance. "
+                    "Please try again later."
+                )
+                logger.error(f"Session {self.session_id}: Claude API unavailable (503)")
             else:
-                user_msg = f"❌ Claude API error ({e.status_code}): {str(e)}"
+                user_msg = f"❌ **Claude API error** ({e.status_code}): {str(e)}"
+                logger.warning(f"Session {self.session_id}: Claude API error {e.status_code}: {str(e)}")
 
-            logger.warning(f"Claude API error: {str(e)}")
+            await self.send_error(user_msg)
+            await self.send_typing(False)
+
+        except asyncio.TimeoutError:
+            user_msg = (
+                "⏱️ **Request timed out**. The operation took too long to complete. "
+                "This might be due to network issues or high API load. Please try again."
+            )
+            logger.error(f"Session {self.session_id}: Timeout in Claude processing")
             await self.send_error(user_msg)
             await self.send_typing(False)
 
         except Exception as e:
-            logger.error(f"Claude processing failed: {str(e)}", exc_info=True)
-            await self.send_error(f"Error processing message: {str(e)}")
+            # Catch-all for unexpected errors
+            error_msg = str(e)
+
+            # Check for common network errors
+            if 'connection' in error_msg.lower() or 'network' in error_msg.lower():
+                user_msg = (
+                    "🌐 **Network error**. Unable to connect to Claude API. "
+                    "Please check your internet connection and try again."
+                )
+            else:
+                user_msg = f"❌ **Unexpected error**: {error_msg}"
+
+            logger.error(f"Session {self.session_id}: Claude processing failed: {error_msg}", exc_info=True)
+            await self.send_error(user_msg)
             await self.send_typing(False)
 
     async def process_message(self, user_message: str):
