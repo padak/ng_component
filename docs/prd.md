@@ -78,51 +78,78 @@ Output: Production Python script, tested, ready to deploy
 
 ### 4.1 Driver / Library (per system)
 
-**What it is**: Python package for integrating a specific system (Salesforce, HubSpot, PostgreSQL, ...).
+**What it is**: Python package for integrating a specific system (Salesforce, HubSpot, PostgreSQL, Weather APIs, ...).
 
-**Structure** (draft):
+> **📖 Complete specification**: See [Driver Design v2.0](driver_design_v2.md) for production-ready architecture, API contract, and implementation guidelines.
+
+**Core Concept**:
+- **Driver documents** how to write Python code (via README, docstrings, examples)
+- **Agent generates** integration scripts using driver API
+- **Python runtime executes** the generated code (not the agent!)
+
+**Structure**:
 ```
 salesforce_driver/
-├── main.py              # Entry point, Client class
-├── README.md            # "Hi, this is the Salesforce driver"
-├── examples/            # Sample scripts (certified queries)
+├── __init__.py          # Version, exports
+├── client.py            # BaseDriver implementation
+├── exceptions.py        # Structured exception hierarchy
+├── README.md            # System overview, quick start, query language
+├── examples/            # Certified example scripts (3-5 scripts)
 │   ├── list_leads.py
-│   ├── create_opportunity.py
-│   └── sync_with_external_db.py
-├── docs/                # More detailed documentation
-│   ├── SALESFORCE_OVERVIEW.md
-│   ├── API_REFERENCE.md
-│   └── COMMON_PATTERNS.md
-└── src/                 # Implementation details
-    ├── client.py
-    ├── models.py
-    └── utils.py
+│   ├── query_with_filters.py
+│   └── pagination_example.py
+└── tests/               # Unit and integration tests
+    ├── test_client.py
+    └── test_integration.py
 ```
 
-**Key capabilities**:
-- `Client` class with methods for working with API
-- **Discovery mode**: Agent can call mini scripts to discover structure
-  - `client.list_objects()` — what objects exist?
-  - `client.get_fields(object_name)` — what fields does an object have?
-- **Documentation**: README + docs/ so agent knows how it works
-- **Examples**: examples/ with certified queries so agent has templates
+**Driver API Contract v2.0** (required methods):
 
-**Driver API Contract** (minimum required methods):
+| Method | Signature | Purpose |
+|--------|-----------|---------|
+| `__init__(api_url, api_key, ...)` | Constructor | Initialize with credentials (fail fast!) |
+| `from_env()` | `classmethod -> Driver` | Load credentials from environment variables |
+| `get_capabilities()` | `() -> DriverCapabilities` | What driver can do (read, write, pagination style, etc.) |
+| `list_objects()` | `() -> List[str]` | Discovery: available objects/tables/endpoints |
+| `get_fields(object_name)` | `(str) -> Dict[str, Any]` | Discovery: field schema with types and metadata |
+| `read(query, limit, offset)` | `(str, int, int) -> List[Dict]` | Execute query, return results |
 
-| Method | Signature | Returns | Purpose |
-|--------|-----------|---------|---------|
-| `list_objects()` | `() -> List[str]` | List of object/table names | Discovery: what can be queried |
-| `get_fields(obj)` | `(str) -> Dict[str, Any]` | Field definitions (name, type, nullable) | Discovery: object structure |
+**Optional methods** (based on capabilities):
+- `create(object_name, data)` - Create record
+- `update(object_name, id, data)` - Update record
+- `delete(object_name, id)` - Delete record (rarely used!)
+- `read_batched(query, batch_size)` - Iterator for large datasets
+- `call_endpoint(endpoint, method, params)` - Low-level REST API access
+- High-level convenience methods (e.g., `create_lead(first_name, last_name, ...)`)
 
-**Important notes**:
-- **No caching in driver** - Driver must be reliable; caching is agent's responsibility if needed
-- **Rate limiting** - Implementation-dependent; driver should handle it appropriately for the target system
-- **Error handling** - Driver should raise clear exceptions (ConnectionError, AuthError, ObjectNotFoundError, etc.)
+**Key Features**:
+- **Hybrid authentication** - `Driver.from_env()` or `Driver(api_key=...)`
+- **Automatic retry** - Driver handles rate limiting with exponential backoff
+- **Structured exceptions** - `AuthenticationError`, `ObjectNotFoundError`, `RateLimitError`, etc.
+- **Both abstraction layers** - Low-level (query/call_endpoint) + high-level (create_lead)
+- **Fail fast** - Validate credentials at `__init__` time
+- **Debug mode** - `Driver(debug=True)` logs all API calls
+
+**Documentation Requirements**:
+- **README.md** - Overview, authentication, query language, common patterns
+- **Docstrings** - Type hints + examples in every public method
+- **Examples folder** - 3-5 certified scripts for few-shot learning
+- **OpenAPI spec** (optional for REST APIs) - Machine-readable endpoint documentation
 
 **Authentication**:
-- Business user puts credentials in `.env`
-- Driver reads them from `os.environ` at runtime
-- Agent knows from instructions that it expects them in `.env`
+- Business user puts credentials in `.env` file
+- Driver loads via `from_env()` or accepts explicit parameters
+- Agent generates code that uses `from_env()` (no credentials in code!)
+
+**Error Handling**:
+- Driver raises structured exceptions with descriptive messages
+- Errors include `details` dict for programmatic handling
+- Example: `ObjectNotFoundError("Object 'Leads' not found. Did you mean 'Lead'?", details={"suggestions": ["Lead"]})`
+
+**See also**:
+- [Driver Design v2.0](driver_design_v2.md) - Complete specification
+- [Current implementation](../examples/e2b_mockup/salesforce_driver/) - Proof-of-concept Salesforce driver
+- [Driver Contract](../examples/e2b_mockup/DRIVER_CONTRACT.md) - V1 specification (deprecated in favor of v2)
 
 ---
 
