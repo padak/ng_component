@@ -65,12 +65,14 @@ cp .env.example .env
 ### Run the Agent
 
 ```bash
-# Start the web UI
-uvicorn app:app --reload --port 8081
+# Start the web UI (with reload exclusions to prevent restart during driver generation)
+uvicorn app:app --reload --reload-exclude 'generated_drivers/*' --port 8081
 
 # Open browser
 open http://localhost:8081/static/
 ```
+
+**Important:** Use `--reload-exclude 'generated_drivers/*'` to prevent uvicorn from restarting when drivers are generated. Without this, E2B testing will be interrupted!
 
 ---
 

@@ -406,6 +406,8 @@ def generate_driver_scaffold(
             if test_results.get("success") and test_results.get("tests_passed", 0) > 0:
                 tests_failed = test_results.get("tests_failed", 0)
                 if tests_failed > 0:
+                    print(f"❌ E2B tests failed: {tests_failed} failures")
+                    print(f"Test output:\n{test_results.get('test_output', 'No output')}")
                     return {
                         "success": False,
                         "error": "TESTS_FAILED",
@@ -423,12 +425,18 @@ def generate_driver_scaffold(
                     }
                 print(f"✅ All E2B tests passed! ({test_results['tests_passed']} tests)")
             else:
-                print(f"⚠️  E2B testing encountered issues (non-critical)")
+                error_msg = test_results.get("error", "Unknown error")
+                print(f"⚠️  E2B testing encountered issues: {error_msg}")
+                print(f"Full test results: {test_results}")
         except Exception as e:
-            print(f"⚠️  E2B testing skipped: {str(e)}")
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"⚠️  E2B testing exception: {str(e)}")
+            print(f"Traceback:\n{error_details}")
             test_results = {
                 "success": False,
                 "error": str(e),
+                "traceback": error_details,
                 "skipped": True
             }
     else:
