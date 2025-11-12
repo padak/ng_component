@@ -56,6 +56,11 @@ else:
         if errors:
             print(f"\nRemaining Errors:")
             for err in errors:
-                print(f"  - {err.get('test', 'unknown')}: {err.get('error', 'unknown')}")
+                if isinstance(err, dict):
+                    # Dict error format: {"test": "...", "error": "..."}
+                    print(f"  - {err.get('test', 'unknown')}: {err.get('error', 'unknown')}")
+                else:
+                    # String error format
+                    print(f"  - {err}")
 
 print("="*80)

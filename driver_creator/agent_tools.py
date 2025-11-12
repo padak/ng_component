@@ -425,10 +425,17 @@ Start directly with the code (or markdown for README).
                         print(f"   📋 Analyzing {len(errors)} error(s)...")
 
                         # Create fix prompt for Tester Agent
-                        error_summary = "\n".join([
-                            f"- {err.get('test', 'unknown')}: {err.get('error', 'unknown')}"
-                            for err in errors
-                        ])
+                        # Handle both dict and string error formats
+                        error_lines = []
+                        for err in errors:
+                            if isinstance(err, dict):
+                                test_name = err.get('test', 'unknown')
+                                error_msg = err.get('error', 'unknown')
+                                error_lines.append(f"- {test_name}: {error_msg}")
+                            else:
+                                # String error
+                                error_lines.append(f"- {err}")
+                        error_summary = "\n".join(error_lines)
 
                         fix_prompt = f"""You are a Tester & Debugger Agent. Analyze test failures and suggest fixes.
 
@@ -517,6 +524,14 @@ Return JSON:
                             for file_to_fix in files_to_fix:
                                 print(f"   ♻️  Regenerating {file_to_fix}...")
 
+                                # Strip driver name prefix if present to avoid double nesting
+                                # e.g., "jsonplaceholder_driver/client.py" -> "client.py"
+                                driver_name = output_dir.name  # e.g., "jsonplaceholder_driver"
+                                if file_to_fix.startswith(f"{driver_name}/"):
+                                    relative_file_path = file_to_fix[len(driver_name)+1:]  # Remove "driver_name/"
+                                else:
+                                    relative_file_path = file_to_fix
+
                                 # Find the fix for this file
                                 file_fixes = [f for f in fix_data.get('fixes', []) if f['file'] == file_to_fix]
                                 fix_instructions = "\n".join([
@@ -576,8 +591,10 @@ Start directly with the code.
                                             lines = lines[:-1]
                                         fixed_content = '\n'.join(lines).strip()
 
-                                    # Write fixed file
-                                    fixed_file_path = output_dir / file_to_fix
+                                    # Write fixed file (using relative path to avoid double nesting)
+                                    fixed_file_path = output_dir / relative_file_path
+                                    fixed_file_path.parent.mkdir(parents=True, exist_ok=True)
+
                                     with open(fixed_file_path, 'w', encoding='utf-8') as f:
                                         f.write(fixed_content)
 
