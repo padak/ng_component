@@ -409,6 +409,8 @@ def generate_driver_with_agents(
     # Initialize session logging
     session_dir = init_session_logging()
 
+    # Read Layer 1 config from .env
+    max_file_generation_retries = int(os.getenv('MAX_FILE_GENERATION_RETRIES', '3'))
 
     # Initialize memory client
     memory = get_memory_client()
@@ -533,11 +535,14 @@ def generate_driver_with_agents(
 
     class_name = "".join([word.capitalize() for word in api_name.replace("-", " ").replace("_", " ").split()])
 
+    # Escape curly braces in JSON for .format() - JSON braces would be treated as placeholders
+    research_json = json.dumps(research_data, indent=2).replace('{', '{{').replace('}', '}}')
+
     generator_prompt = GENERATOR_AGENT_PROMPT.format(
         class_name=class_name,
         api_name=api_name,
-        research_data=research_data,
-        research_json=json.dumps(research_data, indent=2),
+        research_data=str(research_data).replace('{', '{{').replace('}', '}}'),  # Escape braces
+        research_json=research_json,
         memories="\n".join([f"- {m}" for m in memory_context]) if memory_context else "No previous learnings yet"
     )
 
@@ -802,7 +807,7 @@ Start directly with the code (or markdown for README).
                     research_data=research_data,
                     class_name=class_name,
                     claude_client=claude,
-                    max_retries=3
+                    max_retries=max_file_generation_retries  # From .env: MAX_FILE_GENERATION_RETRIES
                 )
 
                 files_dict[file_path] = file_content
@@ -1995,8 +2000,8 @@ def generate_driver_supervised(
     api_name: str,
     api_url: str,
     output_dir: Optional[str] = None,
-    max_supervisor_attempts: int = 3,
-    max_retries: int = 7
+    max_supervisor_attempts: Optional[int] = None,
+    max_retries: Optional[int] = None
 ) -> Dict[str, Any]:
     """
     🏆 MAIN ENTRY POINT for self-healing driver generation.
@@ -2017,8 +2022,8 @@ def generate_driver_supervised(
         api_name: Name of API (e.g., "Open-Meteo")
         api_url: Base URL of API
         output_dir: Optional output directory
-        max_supervisor_attempts: Max supervisor-level retries (default: 3)
-        max_retries: Max fix-retry iterations per attempt (default: 7)
+        max_supervisor_attempts: Max supervisor-level retries (default: from .env or 3)
+        max_retries: Max fix-retry iterations per attempt (default: from .env or 7)
 
     Returns:
         Same format as generate_driver_with_agents() but with added fields:
@@ -2031,6 +2036,12 @@ def generate_driver_supervised(
         }
     """
     import time
+
+    # Read configuration from .env if not provided
+    if max_supervisor_attempts is None:
+        max_supervisor_attempts = int(os.getenv('MAX_SUPERVISOR_ATTEMPTS', '3'))
+    if max_retries is None:
+        max_retries = int(os.getenv('MAX_FIX_RETRY_ITERATIONS', '7'))
 
     print("=" * 80)
     print("🏆 SUPERVISOR: Self-Healing Driver Generation")
