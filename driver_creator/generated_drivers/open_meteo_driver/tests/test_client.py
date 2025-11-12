@@ -35,7 +35,7 @@ def client():
     """Create a test client with mocked validation"""
     with patch.object(OpenMeteoDriver, '_validate_connection'):
         return OpenMeteoDriver(
-            api_url="https://open-meteo.com/en/docs",
+            api_url="https://api.open-meteo.com/v1",
             api_key="test_key_12345"
         )
 
@@ -47,11 +47,11 @@ class TestDriverInitialization:
         """Test initialization with explicit credentials"""
         with patch.object(OpenMeteoDriver, '_validate_connection'):
             client = OpenMeteoDriver(
-                api_url="https://open-meteo.com/en/docs",
+                api_url="https://api.open-meteo.com/v1",
                 api_key="test_key"
             )
 
-            assert client.api_url == "https://open-meteo.com/en/docs"
+            assert client.api_url == "https://api.open-meteo.com/v1"
             assert client.api_key == "test_key"
             assert client.timeout == 30
             assert client.max_retries == 3
@@ -60,14 +60,14 @@ class TestDriverInitialization:
         """Test that trailing slash is stripped from api_url"""
         with patch.object(OpenMeteoDriver, '_validate_connection'):
             client = OpenMeteoDriver(
-                api_url="https://open-meteo.com/en/docs/",
+                api_url="https://api.open-meteo.com/v1/",
                 api_key="test_key"
             )
 
-            assert client.api_url == "https://open-meteo.com/en/docs"
+            assert client.api_url == "https://api.open-meteo.com/v1"
 
     @patch.dict('os.environ', {
-        'OPEN_METEO_DRIVER_API_URL': 'https://open-meteo.com/en/docs',
+        'OPEN_METEO_DRIVER_API_URL': 'https://api.open-meteo.com/v1',
         'OPEN_METEO_DRIVER_API_KEY': 'env_test_key'
     })
     def test_from_env_success(self):
@@ -75,7 +75,7 @@ class TestDriverInitialization:
         with patch.object(OpenMeteoDriver, '_validate_connection'):
             client = OpenMeteoDriver.from_env()
 
-            assert client.api_url == "https://open-meteo.com/en/docs"
+            assert client.api_url == "https://api.open-meteo.com/v1"
             assert client.api_key == "env_test_key"
 
     @patch.dict('os.environ', {}, clear=True)
@@ -91,7 +91,7 @@ class TestDriverInitialization:
         caps = client.get_capabilities()
 
         assert caps.read is True
-        assert caps.write is False
+        assert caps.write is True
         assert caps.query_language is None
         assert caps.pagination.value == "none"
 
@@ -201,7 +201,7 @@ class TestErrorHandling:
 
         with pytest.raises(AuthenticationError):
             OpenMeteoDriver(
-                api_url="https://open-meteo.com/en/docs",
+                api_url="https://api.open-meteo.com/v1",
                 api_key="invalid_key"
             )
 
@@ -212,7 +212,7 @@ class TestErrorHandling:
 
         with pytest.raises(ConnectionError):
             OpenMeteoDriver(
-                api_url="https://open-meteo.com/en/docs",
+                api_url="https://api.open-meteo.com/v1",
                 api_key="test_key"
             )
 

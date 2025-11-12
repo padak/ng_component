@@ -34,3 +34,6 @@ typing-extensions==4.12.2
 
 # E2B Code Interpreter (for testing generated drivers in sandboxes)
 e2b-code-interpreter==1.0.4
+
+# mem0 - Memory layer for AI agents
+mem0ai==1.0.0

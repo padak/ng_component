@@ -5,9 +5,9 @@
 
 ## Overview
 
-None driver for Open-Meteo following [Driver Design v2.0](../docs/driver_design_v2.md) specification.
+REST driver for Open-Meteo following [Driver Design v2.0](../docs/driver_design_v2.md) specification.
 
-**Base URL:** `https://open-meteo.com/en/docs`
+**Base URL:** `https://api.open-meteo.com/v1`
 
 ## Installation
 
@@ -25,7 +25,7 @@ client = OpenMeteoDriver.from_env()
 
 # Option 2: Explicit credentials
 client = OpenMeteoDriver(
-    api_url="https://open-meteo.com/en/docs",
+    api_url="https://api.open-meteo.com/v1",
     api_key="your_api_key_here"
 )
 
@@ -60,7 +60,7 @@ client.close()
 Create a `.env` file in your project root:
 
 ```bash
-OPEN_METEO_DRIVER_API_URL=https://open-meteo.com/en/docs
+OPEN_METEO_DRIVER_API_URL=https://api.open-meteo.com/v1
 OPEN_METEO_DRIVER_API_KEY=your_api_key_here
 ```
 
@@ -87,7 +87,7 @@ print(f"Pagination style: {capabilities.pagination.value}")
 **This driver supports:**
 
 - ✅ Read operations
-- ❌ Write operations (read-only)
+- ✅ Write operations (create, update)
 - ❌ Delete operations (not supported)
 - ❌ Batch operations (not yet implemented)
 - ❌ Pagination (not needed)
@@ -134,6 +134,22 @@ results = client.read(limit=10)
 ```
 
 
+### Low-Level API Access
+
+For advanced use cases, call endpoints directly:
+
+```python
+# Direct endpoint call
+result = client.call_endpoint(
+    endpoint="/items",
+    method="GET",
+    params={
+        "limit": 100,
+        "start_date": "2024-01-01"
+    }
+)
+```
+
 
 ### Debug Mode
 
@@ -141,13 +157,13 @@ Enable debug logging to see all API calls:
 
 ```python
 client = OpenMeteoDriver(
-    api_url="https://open-meteo.com/en/docs",
+    api_url="https://api.open-meteo.com/v1",
     api_key="your_key",
     debug=True
 )
 
 # Now all API calls are logged:
-# [DEBUG] GET https://open-meteo.com/en/docs/objects
+# [DEBUG] GET https://api.open-meteo.com/v1/objects
 # [DEBUG] Rate limited. Retrying in 2s...
 ```
 
@@ -300,7 +316,7 @@ Contributions welcome! Please:
 - 📚 [Driver Design v2.0](../docs/driver_design_v2.md)
 - 🐛 [Report Issues](https://github.com/your-org/open_meteo_driver/issues)
 
-- 📖 [Open-Meteo API Docs](https://open-meteo.com/en/docs)
+- 📖 [Open-Meteo API Docs](https://api.open-meteo.com/v1)
 
 
 ---

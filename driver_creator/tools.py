@@ -397,9 +397,16 @@ def generate_driver_scaffold(
     if e2b_api_key:
         print(f"🧪 Testing driver in E2B sandbox...")
         try:
+            # Extract base URL from research data for testing
+            test_api_url = research_data.get("base_url")
+            if not test_api_url:
+                print("⚠️  Warning: No base_url in research_data, using default")
+                test_api_url = None  # Will default to localhost:8000
+
             test_results = test_driver_in_e2b(
                 driver_path=str(output_path),
                 driver_name=driver_name,
+                test_api_url=test_api_url,
                 use_mock_api=False  # For now, test without mock API
             )
 
@@ -677,7 +684,11 @@ def test_driver_in_e2b(
         test_api_url = "http://localhost:8000"
 
     if test_credentials is None:
-        test_credentials = {"api_key": "test_key_12345"}
+        # For public APIs (not localhost), don't send fake API key
+        if test_api_url and ("localhost" not in test_api_url and "127.0.0.1" not in test_api_url):
+            test_credentials = {}  # Empty for public APIs
+        else:
+            test_credentials = {"api_key": "test_key_12345"}  # For mock APIs
 
     sandbox = None
     sandbox_id = None

@@ -43,6 +43,11 @@ from tools import (
     test_driver_in_e2b
 )
 
+from agent_tools import (
+    generate_driver_with_agents,
+    extract_learnings_to_mem0
+)
+
 # Load environment variables
 load_dotenv()
 
@@ -158,7 +163,31 @@ data = client.read("users", limit=10)
 
 **Your Capabilities:**
 
-You have access to five powerful tools:
+You have access to powerful tools, including a NEW agent-based approach:
+
+🚀 **RECOMMENDED: Agent-Based Generation**
+
+**generate_driver_with_agents** - The BEST way to create drivers!
+   - Uses specialized sub-agents (Research, Generator, Tester, Learning)
+   - LLM generates complete code (no templates!)
+   - Automatic testing loop with error fixing
+   - Learns from mistakes and saves to mem0
+   - Input: api_name, api_url (that's it!)
+   - Output: Complete, working driver on first try
+
+**How it works:**
+1. Research Agent → Analyzes API deeply
+2. Generator Agent → Claude generates complete 800-line driver
+3. Tester Agent → Tests in E2B, fixes errors automatically
+4. Learning Agent → Saves patterns to mem0 for next time
+
+**Why it's better:**
+- ✅ No template limitations - handles ANY API pattern
+- ✅ Self-fixing - automatically debugs and retries
+- ✅ Self-learning - remembers patterns via mem0
+- ✅ Simpler - just provide api_name and api_url!
+
+⚠️  **Legacy Tools (still available but not recommended):**
 
 1. **research_api**: Fetch and analyze API documentation for a given API
    - Input: api_name (e.g., "PostHog", "Stripe"), optional api_url
@@ -168,11 +197,12 @@ You have access to five powerful tools:
    - Input: research_data from research_api
    - Output: automation level (LEVEL_1/2/3), percentage, estimated time saved
 
-3. **generate_driver_scaffold**: Generate driver files AND automatically validate + test
+3. **generate_driver_scaffold**: OLD template-based generation
    - Input: api_name, research_data, optional output_dir
    - Output: Complete driver package with validation and E2B test results
    - **AUTOMATIC STEPS**: Generate → Validate → Test in E2B (all in one call!)
    - Returns success=False if validation or tests fail
+   - ⚠️ Limited by templates - use generate_driver_with_agents instead!
 
 4. **validate_driver**: Validate generated driver against Driver Design v2.0 spec
    - Input: driver_path
@@ -386,7 +416,7 @@ CLAUDE_TOOLS = [
     },
     {
         "name": "generate_driver_scaffold",
-        "description": "Generate a complete driver package from templates based on API research. Creates client.py, exceptions.py, README.md, examples/, and tests/ directories. Returns list of generated files, TODOs, and completion status. Use this after evaluating complexity.",
+        "description": "⚠️  LEGACY: Generate driver from templates. Use generate_driver_with_agents instead for better results with LLM code generation!",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -404,6 +434,32 @@ CLAUDE_TOOLS = [
                 }
             },
             "required": ["api_name", "research_data"]
+        }
+    },
+    {
+        "name": "generate_driver_with_agents",
+        "description": "🚀 NEW APPROACH: Generate a complete, working driver using specialized sub-agents and LLM code generation. This is the recommended way to create drivers - it uses Research Agent, Generator Agent, Tester Agent, and Learning Agent to create drivers that work on first try. Includes automatic testing loop, error fixing, and learning from mistakes (saved to mem0). Much better than templates!",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "api_name": {
+                    "type": "string",
+                    "description": "Name of the API (e.g., 'Open-Meteo', 'Stripe', 'PostgreSQL')"
+                },
+                "api_url": {
+                    "type": "string",
+                    "description": "Base URL for the API (e.g., 'https://api.open-meteo.com/v1')"
+                },
+                "output_dir": {
+                    "type": "string",
+                    "description": "Optional output directory path (defaults to generated_drivers/<driver_name>)"
+                },
+                "max_retries": {
+                    "type": "integer",
+                    "description": "Maximum number of test-fix iterations (default: 3)"
+                }
+            },
+            "required": ["api_name", "api_url"]
         }
     },
     {
@@ -601,6 +657,27 @@ class DriverCreatorSession:
 
                 tool_result = {
                     'success': True,
+                    'data': result
+                }
+
+            elif tool_name == "generate_driver_with_agents":
+                api_name = tool_input['api_name']
+                api_url = tool_input['api_url']
+                output_dir = tool_input.get('output_dir')
+                max_retries = tool_input.get('max_retries', 3)
+
+                result = await loop.run_in_executor(
+                    None,
+                    lambda: generate_driver_with_agents(
+                        api_name=api_name,
+                        api_url=api_url,
+                        output_dir=output_dir,
+                        max_retries=max_retries
+                    )
+                )
+
+                tool_result = {
+                    'success': result.get('success', False),
                     'data': result
                 }
 
