@@ -729,7 +729,7 @@ Open the code you generated and verify:
 5. If you see {{}} braces in the return, YOU DID IT WRONG!
 
 **If unsure, read CRITICAL REQUIREMENTS again from the top!**
-""".format(class_name=class_name)
+""".replace('{class_name}', class_name)
 
             elif file_path == "__init__.py":
                 file_prompt += f"""
