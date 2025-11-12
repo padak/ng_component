@@ -1050,7 +1050,14 @@ print("JSON_RESULT_END")
                 parsed_result = json.loads(json_str)
                 tests_passed = parsed_result.get('tests_passed', 0)
                 tests_failed = parsed_result.get('tests_failed', 0)
-                errors = [err.get('error', 'Unknown error') for err in parsed_result.get('errors', [])]
+                # Handle both dict and string error formats
+                errors = []
+                for err in parsed_result.get('errors', []):
+                    if isinstance(err, dict):
+                        errors.append(err.get('error', 'Unknown error'))
+                    else:
+                        # String error
+                        errors.append(str(err))
 
             else:
                 # Fallback: parse from text output
