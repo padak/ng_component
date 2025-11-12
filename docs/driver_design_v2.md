@@ -1786,6 +1786,358 @@ if salesforce_driver.__version__ < "1.0.0":
 
 ---
 
+## Comparison with MCP Code Execution
+
+Our driver design aligns with Anthropic's [Code Execution with MCP](https://www.anthropic.com/engineering/code-execution-with-mcp) paradigm while providing specialized value for data integration use cases.
+
+### Shared Foundation
+
+Both approaches recognize that **agents should generate code rather than make direct tool calls**:
+
+✅ **Code execution** - Agent generates code, sandbox executes it
+✅ **Context efficiency** - Only final results pass through agent context
+✅ **Progressive disclosure** - Tools/capabilities loaded on-demand
+✅ **Local data processing** - Filter/transform data in execution environment
+✅ **Privacy benefits** - Sensitive data stays in execution environment
+
+**Key insight from Anthropic article:**
+> "LLMs are adept at writing code and developers should take advantage of this strength."
+
+**Our driver principle:**
+> "Driver documents HOW to write Python code. Agent generates the code. Python runtime executes it."
+
+**These are fundamentally the same paradigm!** ✅
+
+### Our Specialized Advantages
+
+While Anthropic provides a **generic approach** for any MCP server, our driver design offers **specialized value** for data integration:
+
+#### 1. Data Integration Focus
+
+**Anthropic MCP + Code Execution:**
+- Generic approach (any MCP server, any domain)
+- Filesystem-based discovery (`./servers/google-drive/tools.ts`)
+- No domain-specific patterns
+
+**Our Driver Design:**
+```python
+# Standardized discovery pattern for data sources:
+objects = client.list_objects()           # What data is available?
+fields = client.get_fields("Lead")        # What's the structure?
+results = client.read("SELECT ...")       # Query the data
+```
+
+**Benefits:**
+- 🎯 **Standardized discovery flow** across all data sources
+- 🎯 **Schema introspection** as first-class citizen
+- 🎯 **CRUD operations** explicitly designed
+- 🎯 **Pagination patterns** (offset, cursor, page-based)
+
+#### 2. The "10% vs 90%" Problem
+
+From our original concept:
+> "10% is the actual technical logic, 90% is productization - making it work for people's unique installations"
+
+**Anthropic article:**
+- Doesn't address this specific pain point
+- Generic code execution framework
+
+**Our design:**
+- ✅ **Agent handles the 90%** (adaptation to custom installations)
+- ✅ **Driver provides the 10%** (technical implementation)
+- ✅ **Eliminates customization overhead**
+
+**Real-world impact:**
+```
+Traditional connector:
+- Hardcoded fields
+- Breaks when customer adds custom fields
+- Requires developer intervention
+
+Our approach:
+- Agent discovers custom fields at runtime
+- Generates code that adapts automatically
+- No developer needed!
+```
+
+#### 3. Business User Workflow
+
+**Anthropic article:**
+- Developer/technical user perspective
+- Focus on code efficiency
+
+**Our design:**
+- 🎯 **Business users** (non-programmers) as primary audience
+- 🎯 **Natural language → Python script** pipeline
+- 🎯 **Approval workflow** for non-technical validation
+- 🎯 **Agent as intermediary** between business requirements and technical implementation
+
+**Example workflow:**
+```
+Business user: "I want leads from last 30 days with email and company"
+
+Agent: [Discovers schema, generates script, shows preview]
+       "This will fetch 150 leads. Should I proceed?"
+
+Business user: "Yes" [Non-technical approval]
+
+Agent: [Runs in E2B, returns results]
+```
+
+#### 4. LLM-Optimized Documentation
+
+**Our driver structure:**
+```
+driver/
+├── README.md          # System overview + query language syntax
+├── examples/          # 3-5 certified scripts (few-shot learning!)
+│   ├── simple_query.py
+│   ├── pagination.py
+│   └── error_handling.py
+└── docstrings         # Type hints + examples in every method
+```
+
+**Learning flow:**
+1. Agent reads **README.md** → "This is how SOQL works"
+2. Agent studies **examples/query_with_filters.py** → "Aha, this is how to filter"
+3. Agent examines **examples/pagination.py** → "This is how to handle large datasets"
+4. Agent generates own script using learned patterns
+
+**Anthropic approach:**
+- Filesystem exploration (agent must "discover" what exists)
+- No structured learning process
+- No few-shot examples
+
+**Our advantage:**
+- 🎯 **Few-shot learning** from certified examples
+- 🎯 **Query language documentation** (SOQL syntax, SQL patterns)
+- 🎯 **Common patterns** section (agent learns best practices)
+- 🎯 **Guaranteed-to-work examples**
+
+#### 5. Both Abstraction Layers
+
+**Our design supports two levels:**
+```python
+# Low-level (flexibility):
+client.read("SELECT Id, Name FROM Lead WHERE Status = 'Qualified'")
+client.call_endpoint("/v1/forecast", params={...})
+
+# High-level (convenience):
+client.create_lead(first_name="John", last_name="Doe", company="Acme")
+client.get_forecast(latitude=37.77, longitude=-122.41, days=5)
+```
+
+**Benefits:**
+- 🎯 Agent chooses appropriate abstraction (simple → high-level, complex → low-level)
+- 🎯 **Learning progression** (start with high-level, gradually use low-level)
+- 🎯 Supports both **query languages** (SOQL, SQL) and **REST APIs** (no query language)
+
+**Anthropic:**
+- Only low-level (direct API calls)
+
+#### 6. Query Language Agnostic
+
+**Our design supports:**
+
+| System | Query Language | Implementation |
+|--------|---------------|----------------|
+| Salesforce | SOQL | `read("SELECT Id FROM Lead")` |
+| PostgreSQL | SQL | `read("SELECT id FROM leads")` |
+| MongoDB | MongoDB Query | `read('{"status": "New"}')` |
+| Weather API | None (REST) | `call_endpoint("/forecast", params={...})` |
+
+**How it works:**
+- ✅ Driver documents its query language in README
+- ✅ Agent learns syntax from examples/
+- ✅ REST APIs without query language supported via `call_endpoint()`
+
+**Anthropic:**
+- Assumes filesystem/module-based APIs
+- Doesn't address query language learning
+
+#### 7. Production-Ready Features
+
+**Our design includes:**
+
+```python
+# Automatic retry (exponential backoff)
+client = SalesforceDriver(max_retries=3)
+# Driver handles 429 errors transparently!
+
+# Connection pooling (databases)
+client = PostgreSQLDriver()  # Reuses connections
+
+# Debug mode
+client = Driver(debug=True)  # Logs all API calls
+
+# Fail-fast validation
+client = Driver(api_key="invalid")  # Fails at __init__, not during execution!
+```
+
+**Anthropic article:**
+- Doesn't mention rate limiting
+- Doesn't mention connection pooling
+- Doesn't address production concerns
+
+**Why this matters:**
+- 🎯 Agent doesn't handle retry logic (driver does it)
+- 🎯 Production scripts are reliable out-of-the-box
+- 🎯 Debugging is easy (debug=True)
+
+#### 8. Structured Exception Hierarchy
+
+**Our approach:**
+
+```python
+try:
+    results = client.read("SELECT * FROM NonExistent")
+except ObjectNotFoundError as e:
+    # e.message: "Object 'NonExistent' not found. Did you mean 'Lead'?"
+    # e.details: {"suggestions": ["Lead", "Campaign"]}
+
+except RateLimitError as e:
+    # e.details: {"retry_after": 60, "reset_at": "2025-11-11T15:30:00Z"}
+
+except QuerySyntaxError as e:
+    # e.details: {"query": "SELECT FROM Lead", "position": 7}
+```
+
+**Benefits:**
+- 🎯 Agent **understands errors** (structured, not raw API errors)
+- 🎯 **Actionable suggestions** ("Did you mean 'Lead'?")
+- 🎯 **Programmatic error handling** (agent can parse `details`)
+
+**Anthropic:**
+- Doesn't address error handling for data integration
+- Raw exceptions only
+
+#### 9. Capabilities Discovery
+
+**Our standardized approach:**
+
+```python
+capabilities = client.get_capabilities()
+
+# Returns:
+DriverCapabilities(
+    read=True,
+    write=True,
+    delete=False,           # Salesforce: delete not allowed!
+    pagination=PaginationStyle.CURSOR,
+    query_language="SOQL",
+    max_page_size=2000
+)
+
+# Agent now knows:
+# - Can write → generates create() calls
+# - Cannot delete → won't offer delete operations
+# - Uses cursor pagination → generates read_batched() code
+# - Query language is SOQL → learns syntax from README
+```
+
+**Benefits:**
+- 🎯 **Self-documenting** - agent discovers what driver supports
+- 🎯 **Safety** - agent won't propose unsupported operations
+- 🎯 **Optimization** - agent uses correct pagination style
+
+**Anthropic:**
+- No standardized capabilities discovery
+
+#### 10. Multi-System Orchestration
+
+**Our explicit pattern:**
+
+```python
+# Agent generates:
+from salesforce_driver import SalesforceDriver
+from postgresql_driver import PostgreSQLDriver
+
+sf = SalesforceDriver.from_env()
+pg = PostgreSQLDriver.from_env()
+
+try:
+    # Multi-system integration!
+    leads = sf.read("SELECT * FROM Lead WHERE Status = 'Qualified'")
+
+    for lead in leads:
+        pg.create("leads", {
+            "salesforce_id": lead["Id"],
+            "first_name": lead["FirstName"],
+            ...
+        })
+finally:
+    sf.close()
+    pg.close()
+```
+
+**Our design includes:**
+- ✅ Multi-driver patterns in examples/
+- ✅ Error handling across systems
+- ✅ Proper cleanup (close() on both drivers)
+
+**Anthropic:**
+- Single system focus
+- Doesn't address multi-system orchestration
+
+### Comparison Summary
+
+| Feature | Anthropic MCP + Code Exec | Our Driver Design |
+|---------|---------------------------|-------------------|
+| **Paradigm** | ✅ Code execution | ✅ Code execution |
+| **Context efficiency** | ✅ High (98.7% reduction) | ✅ High (same pattern) |
+| **Data integration focus** | ❌ Generic | ✅ Specialized |
+| **Discovery pattern** | Filesystem exploration | ✅ `list_objects()`, `get_fields()` |
+| **10% vs 90% problem** | ❌ Not addressed | ✅ Core design principle |
+| **Business user focus** | ❌ Developer-focused | ✅ Non-technical users |
+| **LLM-optimized docs** | Filesystem | ✅ README + examples + docstrings |
+| **Abstraction layers** | Low-level only | ✅ Low + High level |
+| **Query language support** | ❌ | ✅ SOQL, SQL, MongoDB, REST |
+| **Production features** | ❌ | ✅ Retry, pooling, debug mode |
+| **Error handling** | Raw exceptions | ✅ Structured hierarchy + suggestions |
+| **Capabilities discovery** | ❌ | ✅ `get_capabilities()` |
+| **Multi-system patterns** | ❌ | ✅ Explicit examples |
+| **Pagination support** | ❌ | ✅ 3 styles (offset, cursor, page) |
+| **MCP compatible** | ✅ Native | ✅ Can wrap as MCP server |
+
+### Positioning
+
+**Anthropic solves:**
+> "How to efficiently use MCP servers through code execution"
+
+**We solve:**
+> "How business users can write data integration scripts for customized systems without programming"
+
+**Our relationship to MCP:**
+- Drivers **can be wrapped as MCP servers**
+- We implement the **Code Execution paradigm** from Anthropic's article
+- We provide **specialized value** for data integration use cases
+- We're **MCP-compatible** but not MCP-dependent
+
+**In practice:**
+```
+MCP Protocol (universal standard)
+    ↓
+MCP + Code Execution (Anthropic best practice)
+    ↓
+Our Driver Design (specialized implementation for data integration)
+```
+
+### Conclusion
+
+Our driver design **validates Anthropic's Code Execution paradigm** while adding specialized value for data integration:
+
+1. ✅ We use the **same core approach** (code execution over direct tool calls)
+2. ✅ We achieve the **same benefits** (context efficiency, progressive disclosure, local processing)
+3. ✅ We add **data-specific patterns** (discovery, schema introspection, CRUD operations)
+4. ✅ We optimize for **business users** (non-technical audience)
+5. ✅ We solve **real-world problems** (the 10% vs 90% customization overhead)
+
+**Our unique value proposition:**
+
+> "While Anthropic provides a generic code execution framework for MCP servers, we deliver a specialized solution for data integration that eliminates 90% of customization overhead through agent-driven discovery and LLM-optimized documentation, enabling business users to write integration scripts without programming."
+
+---
+
 ## Summary Checklist
 
 When building a new driver, ensure:
