@@ -1,0 +1,36 @@
+# Driver Creator Agent - Requirements
+
+# Web Framework
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+
+# Anthropic SDK (Official)
+anthropic>=0.40.0
+
+# WebSocket support
+websockets==13.1
+
+# Template engine for driver generation
+jinja2==3.1.4
+
+# Environment variables
+python-dotenv==1.0.1
+
+# HTTP client for API research
+requests==2.32.3
+
+# HTML parsing for documentation scraping
+beautifulsoup4==4.12.3
+
+# YAML support (for OpenAPI specs)
+pyyaml==6.0.2
+
+# Code formatting for generated drivers
+black==24.8.0
+
+# Type checking utilities
+typing-extensions==4.12.2
+
+# E2B Code Interpreter (for testing generated drivers in sandboxes)
+e2b-code-interpreter==1.0.4

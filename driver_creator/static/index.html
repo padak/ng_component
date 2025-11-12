@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Driver Creator Agent</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Code syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="header-left">
+                <h1 class="header-title">Driver Creator Agent</h1>
+                <p class="header-subtitle">AI-powered driver generation with Claude Sonnet 4.5</p>
+            </div>
+            <div class="header-right">
+                <div class="connection-status">
+                    <div id="status-indicator" class="status-dot"></div>
+                    <span id="status-text">Connecting...</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="main-container">
+        <!-- Left Column: Chat Interface -->
+        <div class="chat-column">
+            <div id="chat-messages" class="chat-messages">
+                <!-- Welcome Message -->
+                <div class="message-wrapper welcome-message">
+                    <div class="message welcome">
+                        <div class="welcome-icon">🚀</div>
+                        <h3>Welcome to Driver Creator Agent!</h3>
+                        <p>I can help you create production-ready data integration drivers. Try:</p>
+                        <ul>
+                            <li>"Create a driver for Salesforce API"</li>
+                            <li>"Build a driver for PostgreSQL"</li>
+                            <li>"Generate a REST API driver"</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="input-area">
+                <button id="clear-btn" class="clear-btn" title="Clear conversation">
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"/>
+                    </svg>
+                </button>
+                <textarea
+                    id="message-input"
+                    class="message-input"
+                    placeholder="Describe the driver you want to create..."
+                    rows="1"
+                ></textarea>
+                <button id="send-btn" class="send-btn" disabled>
+                    <svg width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M15.854.146a.5.5 0 0 1 .11.54l-5.819 14.547a.75.75 0 0 1-1.329.124l-3.178-4.995L.643 7.184a.75.75 0 0 1 .124-1.33L15.314.037a.5.5 0 0 1 .54.11ZM6.636 10.07l2.761 4.338L14.13 2.576 6.636 10.07Zm6.787-8.201L1.591 6.602l4.339 2.76 7.494-7.493Z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Right Column: Code Preview & Status -->
+        <div class="preview-column">
+            <!-- Tabs -->
+            <div class="tabs">
+                <button class="tab active" data-tab="code">Generated Code</button>
+                <button class="tab" data-tab="todo">TODO List</button>
+                <button class="tab" data-tab="validation">Validation</button>
+            </div>
+
+            <!-- Tab Content -->
+            <div class="tab-content">
+                <!-- Generated Code Tab -->
+                <div id="code-tab" class="tab-panel active">
+                    <div class="code-header">
+                        <span class="code-title">Driver Code Preview</span>
+                        <button id="download-btn" class="download-btn" disabled>
+                            <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                                <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+                            </svg>
+                            Download
+                        </button>
+                    </div>
+                    <div id="code-preview" class="code-preview">
+                        <div class="empty-state">
+                            <svg width="48" height="48" fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M10.478 1.647a.5.5 0 1 0-.956-.294l-4 13a.5.5 0 0 0 .956.294l4-13zM4.854 4.146a.5.5 0 0 1 0 .708L1.707 8l3.147 3.146a.5.5 0 0 1-.708.708l-3.5-3.5a.5.5 0 0 1 0-.708l3.5-3.5a.5.5 0 0 1 .708 0zm6.292 0a.5.5 0 0 0 0 .708L14.293 8l-3.147 3.146a.5.5 0 0 0 .708.708l3.5-3.5a.5.5 0 0 0 0-.708l-3.5-3.5a.5.5 0 0 0-.708 0z"/>
+                            </svg>
+                            <p>No driver code generated yet</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TODO List Tab -->
+                <div id="todo-tab" class="tab-panel">
+                    <div class="todo-header">
+                        <span class="todo-title">Implementation Steps</span>
+                        <span id="todo-progress" class="todo-progress">0/0</span>
+                    </div>
+                    <div id="todo-list" class="todo-list">
+                        <div class="empty-state">
+                            <svg width="48" height="48" fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1H2.5zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zM8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7A.5.5 0 0 1 8 5zm3 .5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0z"/>
+                            </svg>
+                            <p>No TODO items yet</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Validation Tab -->
+                <div id="validation-tab" class="tab-panel">
+                    <div class="validation-header">
+                        <span class="validation-title">Driver Validation</span>
+                        <span id="validation-status" class="validation-status"></span>
+                    </div>
+                    <div id="validation-results" class="validation-results">
+                        <div class="empty-state">
+                            <svg width="48" height="48" fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M10.067.87a2.89 2.89 0 0 0-4.134 0l-.622.638-.89-.011a2.89 2.89 0 0 0-2.924 2.924l.01.89-.636.622a2.89 2.89 0 0 0 0 4.134l.637.622-.011.89a2.89 2.89 0 0 0 2.924 2.924l.89-.01.622.636a2.89 2.89 0 0 0 4.134 0l.622-.637.89.011a2.89 2.89 0 0 0 2.924-2.924l-.01-.89.636-.622a2.89 2.89 0 0 0 0-4.134l-.637-.622.011-.89a2.89 2.89 0 0 0-2.924-2.924l-.89.01-.622-.636zm.287 5.984-3 3a.5.5 0 0 1-.708 0l-1.5-1.5a.5.5 0 1 1 .708-.708L7 8.793l2.646-2.647a.5.5 0 0 1 .708.708z"/>
+                            </svg>
+                            <p>No validation results yet</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Token Usage Stats -->
+            <div class="stats-panel">
+                <h4 class="stats-title">Token Usage</h4>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-label">Input:</span>
+                        <span id="stat-input" class="stat-value">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Output:</span>
+                        <span id="stat-output" class="stat-value">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Cache Read:</span>
+                        <span id="stat-cache" class="stat-value cache">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Total:</span>
+                        <span id="stat-total" class="stat-value total">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

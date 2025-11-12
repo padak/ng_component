@@ -17,10 +17,11 @@
 6. [Automation Levels](#automation-levels)
 7. [User Workflow](#user-workflow)
 8. [Agent Capabilities](#agent-capabilities)
-9. [Technical Implementation](#technical-implementation)
-10. [Output Artifacts](#output-artifacts)
-11. [Success Metrics](#success-metrics)
-12. [Implementation Phases](#implementation-phases)
+9. [E2B Testing in Agent Workflow](#e2b-testing-in-agent-workflow)
+10. [Technical Implementation](#technical-implementation)
+11. [Output Artifacts](#output-artifacts)
+12. [Success Metrics](#success-metrics)
+13. [Implementation Phases](#implementation-phases)
 
 ---
 
@@ -151,7 +152,19 @@ Developer: "Yes, generate scaffold"
     ↓
 Agent: [Generates stripe_driver/ folder]
     ↓
-Agent: "✅ Driver created! Review needed:
+Agent: "✅ Driver generated! Testing in E2B sandbox..."
+    ↓
+Agent: [Creates E2B sandbox, uploads driver + mock API, runs tests]
+    ↓
+Agent: "✅ E2B Testing Results:
+       - list_objects(): ✅ (5 objects found)
+       - get_fields(): ✅ (23 fields validated)
+       - read(): ✅ (records returned successfully)
+       - error_handling(): ✅
+
+       Driver validated in isolated environment!
+
+       ⚠️  Review needed for TODOs:
        1. webhook_handler.py (TODO: implement signature verification)
        2. Idempotency logic in create() methods
        3. Integration tests with Stripe test keys
@@ -199,8 +212,9 @@ Agent: "✅ All checks passed! Driver ready for production."
 │  1. research_api - Fetch docs, analyze structure        │
 │  2. evaluate_complexity - Assess automation feasibility │
 │  3. generate_driver_scaffold - Create files             │
-│  4. validate_driver - Check against spec                │
-│  5. suggest_improvements - Identify gaps                │
+│  4. validate_driver - Check against spec + E2B tests    │
+│  5. test_driver_in_e2b - Test in isolated sandbox       │
+│  6. suggest_improvements - Identify gaps                │
 └─────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────┐
@@ -634,12 +648,13 @@ Next steps:
 
 ### Tool 4: `validate_driver`
 
-**Purpose:** Check driver against Driver Design v2.0 spec
+**Purpose:** Check driver against Driver Design v2.0 spec (includes E2B testing)
 
 **Input:**
 ```python
 {
-    "driver_path": "/path/to/stripe_driver"
+    "driver_path": "/path/to/stripe_driver",
+    "run_e2b_tests": True  # Default: True
 }
 ```
 
@@ -652,27 +667,50 @@ Next steps:
 - ✅ Has tests/ folder
 - ✅ Type hints present
 - ✅ Docstrings on all public methods
+- ✅ **E2B sandbox tests pass** (tests driver in isolated environment)
 - ⚠️ TODO markers remaining (warns but doesn't fail)
+
+**E2B Testing Integration:**
+
+When `run_e2b_tests=True` (default), validation includes:
+1. Static checks (code structure, documentation)
+2. **E2B sandbox testing** (actual execution validation)
+3. Return combined results
 
 **Output:**
 ```python
 {
     "valid": True,
-    "checks_passed": 12,
+    "checks_passed": 13,  # Including E2B tests
     "checks_failed": 0,
     "warnings": 2,
     "details": {
         "base_driver_inheritance": "✅ OK",
         "required_methods": "✅ OK",
         "documentation": "✅ OK",
+        "e2b_testing": "✅ OK (5/5 tests passed)",  # NEW
         "todos_remaining": "⚠️ 2 TODOs (review needed)"
+    },
+    "e2b_test_results": {  # NEW: Detailed E2B results
+        "tests_passed": 5,
+        "tests_failed": 0,
+        "test_output": "...",
+        "execution_time": 12.3
     }
 }
 ```
 
+**Note:** Validation now includes E2B testing as a PRODUCTION REQUIREMENT. Drivers that fail E2B tests are marked as invalid even if static checks pass.
+
 ---
 
-### Tool 5: `suggest_improvements`
+### Tool 5: `test_driver_in_e2b`
+
+**See [E2B Testing in Agent Workflow](#e2b-testing-in-agent-workflow) section for complete documentation.**
+
+---
+
+### Tool 6: `suggest_improvements`
 
 **Purpose:** Analyze driver and suggest enhancements
 
@@ -699,6 +737,422 @@ Next steps:
     ]
 }
 ```
+
+---
+
+## E2B Testing in Agent Workflow
+
+**PRODUCTION REQUIREMENT** - All generated drivers MUST be tested in E2B sandboxes before delivery.
+
+### Why E2B Testing is Critical
+
+Testing generated drivers in E2B cloud sandboxes is **non-negotiable** for several critical reasons:
+
+1. **Validation Before Delivery**
+   - Generated drivers must be proven working before giving to user
+   - Can't rely on "it should work" - agent must verify actual functionality
+   - Catches generation errors, missing imports, API incompatibilities
+
+2. **Clean Environment**
+   - User's local environment may have conflicts, missing dependencies, or version mismatches
+   - E2B provides pristine Python environment with exact dependencies
+   - Ensures driver works in isolation without relying on local setup
+
+3. **Real API Testing**
+   - Agent can test driver against actual API (or mock API)
+   - Verifies discovery methods (`list_objects`, `get_fields`) work correctly
+   - Validates query/read operations return expected data structures
+   - Catches authentication, rate limiting, and error handling issues
+
+4. **Quality Assurance**
+   - Automated testing reduces human review burden
+   - Agent identifies issues before developer sees code
+   - Provides confidence: "This driver has been tested and works"
+
+### E2B Testing Workflow
+
+```
+Agent generates driver files
+    ↓
+Agent creates E2B sandbox (cloud VM)
+    ↓
+Agent uploads driver files to sandbox
+    /home/user/{driver_name}/
+    ├── __init__.py
+    ├── client.py
+    ├── exceptions.py
+    └── ...
+    ↓
+Agent uploads test API (if using mock)
+    /home/user/mock_api/
+    ├── main.py
+    ├── database.duckdb
+    └── ...
+    ↓
+Agent creates test script:
+    test_generated_driver.py
+    ├── Import driver
+    ├── Initialize client (with test credentials)
+    ├── Test: list_objects() → validate returns List[str]
+    ├── Test: get_fields(first_object) → validate returns Dict
+    ├── Test: read(simple_query) → validate returns List[Dict]
+    ├── Test: Error handling (invalid query) → validate raises exception
+    └── Report results
+    ↓
+Agent installs dependencies in sandbox
+    pip install -r requirements.txt
+    ↓
+Agent starts mock API (if needed)
+    uvicorn mock_api.main:app --host localhost --port 8000 &
+    ↓
+Agent executes test script in sandbox
+    PYTHONPATH=/home/user python test_generated_driver.py
+    ↓
+Results:
+    ✅ ALL TESTS PASS
+        → Driver validated and ready
+        → Agent shows success + test results
+        → Developer can use with confidence
+
+    ❌ TESTS FAIL
+        → Agent shows detailed error output
+        → Agent suggests fixes based on error
+        → Agent can regenerate and retry
+        → Developer sees issues before review
+```
+
+### Concrete Example: Testing Stripe Driver
+
+```python
+# Agent generates this test script and runs in E2B sandbox:
+
+# /home/user/test_generated_driver.py
+import sys
+import traceback
+from stripe_driver.client import StripeDriver
+
+def test_driver():
+    """
+    Automated test for generated Stripe driver.
+
+    Tests discovery methods and basic operations to ensure
+    driver follows Driver Design v2.0 contract.
+    """
+    results = {
+        "passed": 0,
+        "failed": 0,
+        "errors": []
+    }
+
+    # Initialize driver
+    try:
+        print("[TEST 1] Initializing driver...")
+        client = StripeDriver(
+            api_key="test_key_12345",
+            api_url="http://localhost:8000"  # Mock API in same sandbox
+        )
+        results["passed"] += 1
+        print("✅ Driver initialized successfully")
+    except Exception as e:
+        results["failed"] += 1
+        results["errors"].append(f"Initialization failed: {e}")
+        print(f"❌ Initialization failed: {e}")
+        return results  # Can't continue without client
+
+    # Test 1: list_objects()
+    try:
+        print("\n[TEST 2] Testing list_objects()...")
+        objects = client.list_objects()
+
+        # Validate return type
+        assert isinstance(objects, list), "list_objects() must return List[str]"
+        assert len(objects) > 0, "list_objects() returned empty list"
+        assert all(isinstance(obj, str) for obj in objects), \
+            "list_objects() must return List[str]"
+
+        print(f"✅ list_objects() passed: {len(objects)} objects found")
+        print(f"   Objects: {', '.join(objects[:5])}")
+        results["passed"] += 1
+    except Exception as e:
+        results["failed"] += 1
+        results["errors"].append(f"list_objects() failed: {e}")
+        print(f"❌ list_objects() failed: {e}")
+        traceback.print_exc()
+
+    # Test 2: get_fields() for first object
+    try:
+        print("\n[TEST 3] Testing get_fields()...")
+        if objects:
+            first_object = objects[0]
+            fields = client.get_fields(first_object)
+
+            # Validate return type
+            assert isinstance(fields, dict), "get_fields() must return Dict"
+            assert len(fields) > 0, f"get_fields('{first_object}') returned empty dict"
+
+            # Validate field structure
+            for field_name, field_info in fields.items():
+                assert isinstance(field_name, str), "Field names must be strings"
+                assert isinstance(field_info, dict), "Field info must be dict"
+                assert "type" in field_info, f"Field '{field_name}' missing 'type'"
+
+            print(f"✅ get_fields() passed: {len(fields)} fields in {first_object}")
+            print(f"   Fields: {', '.join(list(fields.keys())[:5])}")
+            results["passed"] += 1
+        else:
+            print("⚠️  Skipping get_fields() - no objects available")
+    except Exception as e:
+        results["failed"] += 1
+        results["errors"].append(f"get_fields() failed: {e}")
+        print(f"❌ get_fields() failed: {e}")
+        traceback.print_exc()
+
+    # Test 3: read() with simple query
+    try:
+        print("\n[TEST 4] Testing read() with simple query...")
+        if objects:
+            first_object = objects[0]
+            records = client.read(first_object, limit=5)
+
+            # Validate return type
+            assert isinstance(records, list), "read() must return List[Dict]"
+            if len(records) > 0:
+                assert isinstance(records[0], dict), \
+                    "read() must return List[Dict[str, Any]]"
+                print(f"✅ read() passed: {len(records)} records returned")
+                print(f"   Keys: {', '.join(list(records[0].keys())[:5])}")
+            else:
+                print("⚠️  read() returned empty list (may be expected)")
+
+            results["passed"] += 1
+        else:
+            print("⚠️  Skipping read() - no objects available")
+    except Exception as e:
+        results["failed"] += 1
+        results["errors"].append(f"read() failed: {e}")
+        print(f"❌ read() failed: {e}")
+        traceback.print_exc()
+
+    # Test 4: Error handling (invalid query)
+    try:
+        print("\n[TEST 5] Testing error handling...")
+        try:
+            # This should raise an exception
+            client.read("NonExistentObject123", limit=1)
+            results["failed"] += 1
+            results["errors"].append("Driver didn't raise exception for invalid object")
+            print("❌ Driver didn't raise exception for invalid object")
+        except Exception as expected_error:
+            # Check if it's one of our driver exceptions
+            from stripe_driver.exceptions import StripeDriverException
+            if isinstance(expected_error, StripeDriverException):
+                print(f"✅ Error handling passed: Raised {type(expected_error).__name__}")
+                results["passed"] += 1
+            else:
+                print(f"⚠️  Raised exception but not driver-specific: {type(expected_error).__name__}")
+                results["passed"] += 1  # Still acceptable
+    except Exception as e:
+        results["failed"] += 1
+        results["errors"].append(f"Error handling test failed: {e}")
+        print(f"❌ Error handling test failed: {e}")
+        traceback.print_exc()
+
+    return results
+
+# Run tests
+if __name__ == "__main__":
+    print("=" * 60)
+    print("DRIVER VALIDATION TEST")
+    print("=" * 60)
+
+    results = test_driver()
+
+    print("\n" + "=" * 60)
+    print("TEST SUMMARY")
+    print("=" * 60)
+    print(f"✅ Passed: {results['passed']}")
+    print(f"❌ Failed: {results['failed']}")
+
+    if results['errors']:
+        print("\n⚠️  ERRORS:")
+        for error in results['errors']:
+            print(f"   - {error}")
+
+    if results['failed'] == 0:
+        print("\n🎉 ALL TESTS PASSED - Driver is validated!")
+        sys.exit(0)
+    else:
+        print(f"\n❌ {results['failed']} test(s) failed - Review needed")
+        sys.exit(1)
+```
+
+**Agent Execution Flow:**
+
+```python
+# Inside Agent's execute_tool("test_driver_in_e2b")
+
+from e2b_code_interpreter import Sandbox
+
+# 1. Create E2B sandbox
+sandbox = Sandbox.create(api_key=E2B_API_KEY)
+
+# 2. Upload driver files
+sandbox.files.write("/home/user/stripe_driver/__init__.py", driver_init_code)
+sandbox.files.write("/home/user/stripe_driver/client.py", driver_client_code)
+sandbox.files.write("/home/user/stripe_driver/exceptions.py", driver_exceptions_code)
+
+# 3. Upload mock API (if needed)
+sandbox.files.write("/home/user/mock_api/main.py", mock_api_code)
+sandbox.files.write("/home/user/mock_api/database.duckdb", db_bytes)
+
+# 4. Upload test script
+sandbox.files.write("/home/user/test_generated_driver.py", test_script)
+
+# 5. Install dependencies
+result = sandbox.run_code("!pip install fastapi uvicorn requests")
+
+# 6. Start mock API
+sandbox.run_code("!uvicorn mock_api.main:app --host localhost --port 8000 &")
+time.sleep(2)  # Wait for API to start
+
+# 7. Run test script
+result = sandbox.run_code(
+    "!PYTHONPATH=/home/user python /home/user/test_generated_driver.py",
+    envs={"SF_API_KEY": "test_key_12345"}
+)
+
+# 8. Parse results
+stdout = "\n".join(result.logs.stdout)
+exit_code = 0 if "ALL TESTS PASSED" in stdout else 1
+
+# 9. Cleanup
+sandbox.kill()
+
+# 10. Return results to user
+if exit_code == 0:
+    return {
+        "status": "success",
+        "message": "✅ Driver validated successfully in E2B sandbox!",
+        "test_output": stdout,
+        "tests_passed": True
+    }
+else:
+    return {
+        "status": "failed",
+        "message": "❌ Driver validation failed - see errors below",
+        "test_output": stdout,
+        "tests_passed": False,
+        "suggestions": agent_analyze_errors(stdout)  # AI suggests fixes
+    }
+```
+
+### New Agent Tool: `test_driver_in_e2b`
+
+**Purpose:** Test generated driver in isolated E2B sandbox
+
+**Input:**
+```python
+{
+    "driver_path": "/path/to/stripe_driver",  # Local path to generated driver
+    "driver_name": "stripe_driver",
+    "test_api_url": "http://localhost:8000",  # Optional: mock API URL
+    "test_credentials": {                      # Optional: test API credentials
+        "api_key": "test_key_12345"
+    },
+    "use_mock_api": True,                     # If True, upload mock API
+    "mock_api_path": "/path/to/mock_api"      # Path to mock API code
+}
+```
+
+**Agent Actions:**
+1. Create E2B sandbox (fresh Python environment)
+2. Upload driver files to `/home/user/{driver_name}/`
+3. Upload mock API files (if `use_mock_api=True`)
+4. Install driver dependencies from requirements
+5. Start mock API in background (if applicable)
+6. Generate test script (as shown above)
+7. Execute test script with proper PYTHONPATH
+8. Parse test results (passed/failed counts)
+9. Analyze errors and suggest fixes (if failures)
+10. Return results + test output
+
+**Output:**
+```python
+{
+    "success": True,  # Overall success/failure
+    "tests_passed": 4,
+    "tests_failed": 0,
+    "test_output": "...",  # Full test output (stdout)
+    "errors": [],  # List of errors if failed
+    "suggestions": [],  # Agent suggestions for fixing failures
+    "execution_time": 12.3,  # seconds
+    "sandbox_id": "sandbox_abc123"  # For debugging
+}
+```
+
+**Integration with Workflow:**
+
+The tool is automatically called during driver generation:
+
+```
+User: "Create driver for Stripe"
+    ↓
+Agent: [Researches API, generates driver]
+    ↓
+Agent: "Driver generated. Testing in E2B sandbox..."
+    ↓
+Agent: [Calls test_driver_in_e2b]
+    ↓
+    ✅ SUCCESS PATH:
+        Agent: "✅ Driver validated! All tests passed.
+               - list_objects(): ✅ (5 objects found)
+               - get_fields(): ✅ (23 fields in Charge)
+               - read(): ✅ (5 records returned)
+               - error_handling(): ✅
+
+               Driver ready for use!"
+
+    ❌ FAILURE PATH:
+        Agent: "⚠️ Driver validation found issues:
+
+               Test Results: 3 passed, 1 failed
+
+               Failed: read() method
+               Error: AttributeError: 'NoneType' object has no attribute 'get'
+
+               Issue: Missing null check in response parsing
+
+               Suggested fix:
+               ```python
+               # Line 89 in client.py
+               - data = response.json()['data']
+               + data = response.json().get('data', [])
+               ```
+
+               Should I regenerate with this fix? [Yes/No]"
+
+    User: "Yes"
+        ↓
+    Agent: [Regenerates driver with fix, tests again]
+        ↓
+    Agent: "✅ Fixed! Driver now passes all tests."
+```
+
+### Benefits
+
+1. **Confidence** - Developer receives tested, working driver
+2. **Early Detection** - Catches generation bugs before code review
+3. **Faster Iteration** - Agent fixes issues automatically
+4. **Quality Assurance** - Consistent validation for all drivers
+5. **Time Savings** - No manual testing setup required
+
+### Edge Cases Handled
+
+- **API Not Available:** Use mock API for testing
+- **Auth Issues:** Test with dummy credentials, validate error handling
+- **Rate Limiting:** Test only essential methods (discovery + one query)
+- **Large Responses:** Limit test queries (e.g., `LIMIT 5`)
+- **Timeout:** Set reasonable test timeout (30 seconds)
 
 ---
 
