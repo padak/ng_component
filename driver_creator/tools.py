@@ -245,6 +245,30 @@ def generate_driver_scaffold(
             ]
         }
     """
+    # VALIDATION: Ensure we have required information
+    # This enforces the "ask before generating" principle
+    api_type = research_data.get("api_type", "REST")
+    endpoints = research_data.get("endpoints", [])
+
+    # For REST APIs without query language, we MUST have endpoints/objects list
+    if api_type == "REST" and not research_data.get("query_language"):
+        if not endpoints or len(endpoints) == 0:
+            return {
+                "success": False,
+                "error": "MISSING_REQUIRED_INFO",
+                "message": (
+                    f"Cannot generate driver for {api_name} - missing required information!\n\n"
+                    f"For REST APIs without query language, you MUST provide:\n"
+                    f"- List of available endpoints/objects (research_data['endpoints'])\n\n"
+                    f"Please ask the user:\n"
+                    f"1. What objects/endpoints does this API provide?\n"
+                    f"2. What are the main data entities? (e.g., 'forecast', 'historical', 'air_quality')\n\n"
+                    f"Then update research_data['endpoints'] with the list before calling generate_driver_scaffold."
+                ),
+                "required_fields": ["endpoints"],
+                "current_research_data": research_data
+            }
+
     # Determine driver name
     driver_name = f"{api_name.lower().replace(' ', '_').replace('-', '_')}_driver"
 

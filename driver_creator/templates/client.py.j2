@@ -202,6 +202,10 @@ class {{ driver_class }}:
             # 1. Fetch from /schema or /metadata endpoint
             # 2. Return hardcoded list of known objects
 
+            {% if endpoints and endpoints|length > 0 %}
+            # {{ api_name }} API has these known objects/endpoints:
+            return {{ endpoints|list }}
+            {% else %}
             # Try schema endpoint first
             try:
                 response = self._api_call("/schema", method="GET")
@@ -215,6 +219,7 @@ class {{ driver_class }}:
             # Fallback: Return empty list (users should override this method)
             # Note: For production use, implement based on specific API documentation
             return []
+            {% endif %}
             {% elif api_type == "GraphQL" %}
             # GraphQL introspection query
             {% raw %}
