@@ -1,0 +1,27 @@
+# PostHog Analytics Agent Dependencies
+
+# Web framework
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-multipart==0.0.18
+
+# WebSocket support
+websockets==13.1
+
+# E2B sandbox execution
+e2b-code-interpreter==1.0.4
+
+# Claude SDK
+anthropic==0.42.0
+
+# HTTP client for PostHog API
+requests==2.32.3
+
+# Environment variables
+python-dotenv==1.0.1
+
+# JSON handling (built-in, but listed for reference)
+# json - standard library
+
+# Async support (built-in)
+# asyncio - standard library
