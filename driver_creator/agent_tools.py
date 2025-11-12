@@ -395,7 +395,7 @@ def generate_driver_with_agents(
 
             # Add specific requirements per file type
             if file_path == "client.py":
-                file_prompt += """
+                file_prompt += f"""
 - Class name: {class_name}Driver
 - Methods: __init__, from_env, get_capabilities, list_objects, get_fields, query/read
 - Include retry logic with exponential backoff

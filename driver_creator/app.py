@@ -38,7 +38,6 @@ import anthropic
 from tools import (
     research_api,
     evaluate_complexity,
-    generate_driver_scaffold,
     validate_driver,
     test_driver_in_e2b
 )
@@ -415,28 +414,6 @@ CLAUDE_TOOLS = [
         }
     },
     {
-        "name": "generate_driver_scaffold",
-        "description": "⚠️  LEGACY: Generate driver from templates. Use generate_driver_with_agents instead for better results with LLM code generation!",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "api_name": {
-                    "type": "string",
-                    "description": "Name of the API (used for driver naming, e.g., 'PostHog' -> 'posthog_driver')"
-                },
-                "research_data": {
-                    "type": "object",
-                    "description": "The research data object returned from research_api tool"
-                },
-                "output_dir": {
-                    "type": "string",
-                    "description": "Optional output directory path (defaults to generated_drivers/<driver_name>)"
-                }
-            },
-            "required": ["api_name", "research_data"]
-        }
-    },
-    {
         "name": "generate_driver_with_agents",
         "description": "🚀 NEW APPROACH: Generate a complete, working driver using specialized sub-agents and LLM code generation. This is the recommended way to create drivers - it uses Research Agent, Generator Agent, Tester Agent, and Learning Agent to create drivers that work on first try. Includes automatic testing loop, error fixing, and learning from mistakes (saved to mem0). Much better than templates!",
         "input_schema": {
@@ -638,21 +615,6 @@ class DriverCreatorSession:
                 result = await loop.run_in_executor(
                     None,
                     lambda: evaluate_complexity(research_data)
-                )
-
-                tool_result = {
-                    'success': True,
-                    'data': result
-                }
-
-            elif tool_name == "generate_driver_scaffold":
-                api_name = tool_input['api_name']
-                research_data = tool_input['research_data']
-                output_dir = tool_input.get('output_dir')
-
-                result = await loop.run_in_executor(
-                    None,
-                    lambda: generate_driver_scaffold(api_name, research_data, output_dir)
                 )
 
                 tool_result = {
