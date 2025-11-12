@@ -386,7 +386,8 @@ def validate_driver(driver_path: str) -> Dict[str, Any]:
         "exception_hierarchy": False,
         "readme_complete": False,
         "examples_count": 0,
-        "todos_remaining": 0
+        "todos_remaining": 0,
+        "no_todos": False  # Must be True for driver to be valid
     }
 
     # Check driver directory exists
@@ -420,8 +421,10 @@ def validate_driver(driver_path: str) -> Dict[str, Any]:
         required_methods = ["list_objects", "get_fields", "read", "get_capabilities"]
         checks["required_methods"] = all(method in client_content for method in required_methods)
 
-        # Count TODOs
-        checks["todos_remaining"] = len(re.findall(r"TODO:", client_content, re.IGNORECASE))
+        # Count TODOs - any TODO is a FAILURE
+        todo_count = len(re.findall(r"TODO:", client_content, re.IGNORECASE))
+        checks["todos_remaining"] = todo_count
+        checks["no_todos"] = (todo_count == 0)  # New check: must have zero TODOs
 
     # Check exceptions.py content
     if checks["has_exceptions"]:
@@ -445,16 +448,18 @@ def validate_driver(driver_path: str) -> Dict[str, Any]:
         checks["examples_count"] = len(list(examples_dir.glob("*.py")))
 
     # Calculate results
-    checks_passed = sum(1 for k, v in checks.items() if k not in ["examples_count", "todos_remaining"] and v)
+    checks_passed = sum(1 for k, v in checks.items() if k not in ["examples_count", "todos_remaining"] and v is True)
     checks_failed = len([k for k in checks.keys() if k not in ["examples_count", "todos_remaining"]]) - checks_passed
 
+    # Warnings (don't fail validation, but should be addressed)
     warnings = 0
-    if checks["todos_remaining"] > 0:
-        warnings += 1
     if checks["examples_count"] < 3:
         warnings += 1
 
-    valid = checks_failed == 0 and warnings <= 2
+    # Driver is valid only if:
+    # 1. All required checks pass
+    # 2. No TODOs remaining (critical!)
+    valid = checks_failed == 0 and checks["no_todos"] == True
 
     # Format details
     details = {
@@ -466,7 +471,8 @@ def validate_driver(driver_path: str) -> Dict[str, Any]:
         "documentation": "✅ OK" if checks["readme_complete"] else "⚠️ Incomplete",
         "examples": f"✅ OK ({checks['examples_count']} examples)" if checks["examples_count"] >= 3 else f"⚠️ {checks['examples_count']} examples (need 3+)",
         "tests": "✅ OK" if checks["has_tests"] else "❌ FAIL",
-        "todos_remaining": f"⚠️ {checks['todos_remaining']} TODOs remaining" if checks["todos_remaining"] > 0 else "✅ All resolved"
+        "complete_implementation": "✅ OK" if checks["no_todos"] else "❌ FAIL - TODOs found",
+        "todos_remaining": f"❌ FAIL - {checks['todos_remaining']} TODOs found (driver must be complete!)" if checks["todos_remaining"] > 0 else "✅ No TODOs (complete implementation)"
     }
 
     return {
