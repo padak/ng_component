@@ -13,6 +13,60 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 from mem0 import Memory
 
+# Model mappings (short name → full ID)
+MODEL_MAPPINGS = {
+    'claude-sonnet-4-5': 'claude-sonnet-4-5-20250929',
+    'claude-sonnet-4': 'claude-sonnet-4-20250514',
+    'claude-haiku-4-5': 'claude-haiku-4-5-20251001',
+    'claude-haiku-3-5': 'claude-3-5-haiku-20241022',
+}
+
+def get_model_id(model_name: str) -> str:
+    """
+    Get full model ID from short name or return as-is if already full ID.
+
+    Args:
+        model_name: Short name (e.g., 'claude-haiku-4-5') or full ID
+
+    Returns:
+        Full model ID (e.g., 'claude-haiku-4-5-20251001')
+    """
+    return MODEL_MAPPINGS.get(model_name, model_name)
+
+def get_agent_model(agent_type: str, default_model: str = 'claude-sonnet-4-5') -> str:
+    """
+    Get optimal model for specific agent type.
+
+    Cost optimization strategy:
+    - Research Agent: Haiku (12x cheaper, fast research)
+    - Generator Agent: Sonnet (quality code generation)
+    - Tester Agent: Haiku (fast test iterations)
+    - Learning Agent: Haiku (simple pattern extraction)
+
+    Args:
+        agent_type: 'research', 'generator', 'tester', 'learning'
+        default_model: Override from CLAUDE_MODEL env var
+
+    Returns:
+        Full model ID
+    """
+    # Check for user override
+    env_model = os.getenv('CLAUDE_MODEL')
+    if env_model:
+        default_model = env_model
+
+    # Multi-model strategy for cost optimization
+    model_strategy = {
+        'research': 'claude-haiku-4-5',      # Fast API analysis
+        'generator': default_model,           # Use user's preferred model for code quality
+        'tester': 'claude-haiku-4-5',        # Fast test iteration
+        'learning': 'claude-haiku-4-5',      # Simple pattern extraction
+        'fixer': 'claude-haiku-4-5',         # Fast code fixes
+    }
+
+    model_name = model_strategy.get(agent_type, default_model)
+    return get_model_id(model_name)
+
 # Initialize mem0 for agent learning
 def get_memory_client() -> Memory:
     """Get initialized mem0 Memory client"""
@@ -117,7 +171,7 @@ def generate_driver_with_agents(
     try:
         # Use prompt caching for system prompt (saves 90% on repeated calls)
         research_response = claude.messages.create(
-            model="claude-sonnet-4-5-20250929",
+            model=get_agent_model('research'),  # Haiku for fast, cheap research
             max_tokens=4000,
             messages=[{
                 "role": "user",
@@ -307,7 +361,7 @@ Start directly with the code (or markdown for README).
                 # Use prompt caching - cache research_data and base instructions
                 # This saves 90% on cost for files 2-6 (same research data)
                 file_response = claude.messages.create(
-                    model="claude-sonnet-4-5-20250929",
+                    model=get_agent_model('generator'),  # User's preferred model for code quality
                     max_tokens=max_tokens,
                     messages=[{
                         "role": "user",
@@ -437,7 +491,7 @@ Start directly with the code (or markdown for README).
                                 error_lines.append(f"- {err}")
                         error_summary = "\n".join(error_lines)
 
-                        fix_prompt = f"""You are a Tester & Debugger Agent. Analyze test failures and suggest fixes.
+                        fix_prompt = f"""You are a Tester & Debugger Agent. Analyze test failures and suggest EXACT code edits.
 
 **Driver:** {api_name}
 **Test Results:** {tests_passed} passed, {tests_failed} failed
@@ -450,8 +504,9 @@ Start directly with the code (or markdown for README).
 
 **Your Task:**
 1. Identify the root cause of each error
-2. Suggest specific code fixes
-3. Return JSON with fixes for each file
+2. Provide EXACT code strings for Edit tool (old_string → new_string)
+3. old_string must match EXACTLY what's in the file (including indentation!)
+4. Return JSON with precise edits
 
 **Common Issues:**
 - `list_objects()` should return `List[str]` (e.g., `["users", "posts"]`), NOT `List[Dict]`
@@ -463,16 +518,22 @@ Return JSON:
 ```json
 {{
     "analysis": "Root cause analysis...",
-    "fixes": [
+    "edits": [
         {{
             "file": "client.py",
             "issue": "list_objects() returns List[Dict] instead of List[str]",
-            "fix": "Extract only the 'name' field from each object",
-            "code_change": "return [obj['name'] for obj in objects] instead of return objects"
+            "old_string": "            return [{{'name': 'forecast', ...}}, {{'name': 'air-quality', ...}}]",
+            "new_string": "            return ['forecast', 'air-quality']",
+            "explanation": "Extract only object names as strings, not full dict objects"
         }}
     ]
 }}
 ```
+
+**CRITICAL:**
+- old_string must match the EXACT code in the file (with correct indentation!)
+- Include enough context to make old_string unique
+- If unsure about exact code, include surrounding lines for context
 """
 
                         try:
@@ -480,7 +541,7 @@ Return JSON:
 
                             # Use prompt caching for error analysis
                             fix_response = claude.messages.create(
-                                model="claude-sonnet-4-5-20250929",
+                                model=get_agent_model('tester'),  # Haiku for fast test iteration
                                 max_tokens=3000,
                                 messages=[{
                                     "role": "user",
@@ -512,96 +573,127 @@ Return JSON:
                             fix_data = json.loads(fix_text)
 
                             print(f"   📝 Analysis: {fix_data.get('analysis', 'N/A')[:100]}...")
-                            print(f"   🔧 Fixes suggested: {len(fix_data.get('fixes', []))}")
 
-                            # Apply fixes - regenerate affected files
-                            files_to_fix = set([fix['file'] for fix in fix_data.get('fixes', [])])
-
-                            if not files_to_fix:
-                                print(f"   ⚠ No specific file fixes suggested - stopping here")
+                            edits = fix_data.get('edits', [])
+                            if not edits:
+                                print(f"   ⚠ No specific edits suggested - stopping here")
                                 break
 
-                            for file_to_fix in files_to_fix:
-                                print(f"   ♻️  Regenerating {file_to_fix}...")
+                            print(f"   🔧 Edits to apply: {len(edits)}")
+
+                            # Group edits by file
+                            files_to_fix = {}
+                            for edit in edits:
+                                file = edit['file']
+                                if file not in files_to_fix:
+                                    files_to_fix[file] = []
+                                files_to_fix[file].append(edit)
+
+                            # Apply edits file by file
+                            for file_to_fix, file_edits in files_to_fix.items():
+                                print(f"   ✏️  Applying {len(file_edits)} edit(s) to {file_to_fix}...")
 
                                 # Strip driver name prefix if present to avoid double nesting
-                                # e.g., "jsonplaceholder_driver/client.py" -> "client.py"
-                                driver_name = output_dir.name  # e.g., "jsonplaceholder_driver"
+                                driver_name = output_dir.name
                                 if file_to_fix.startswith(f"{driver_name}/"):
-                                    relative_file_path = file_to_fix[len(driver_name)+1:]  # Remove "driver_name/"
+                                    relative_file_path = file_to_fix[len(driver_name)+1:]
                                 else:
                                     relative_file_path = file_to_fix
 
-                                # Find the fix for this file
-                                file_fixes = [f for f in fix_data.get('fixes', []) if f['file'] == file_to_fix]
-                                fix_instructions = "\n".join([
-                                    f"- {f['issue']}: {f['fix']}"
-                                    for f in file_fixes
-                                ])
+                                file_path = output_dir / relative_file_path
 
-                                # Regenerate file with fix instructions
-                                fix_file_prompt = f"""Regenerate {file_to_fix} for {api_name} driver with these FIXES:
+                                if not file_path.exists():
+                                    print(f"       ✗ File not found: {file_path}")
+                                    continue
 
-{fix_instructions}
+                                # Read current file content
+                                with open(file_path, 'r', encoding='utf-8') as f:
+                                    current_content = f.read()
 
-**Original Research Data:**
-```json
-{json.dumps(research_data, indent=2)}
+                                # Apply each edit sequentially
+                                modified_content = current_content
+                                edit_success_count = 0
+
+                                for i, edit in enumerate(file_edits, 1):
+                                    old_string = edit['old_string']
+                                    new_string = edit['new_string']
+                                    issue = edit.get('issue', 'unknown')
+
+                                    # Check if old_string exists in current content
+                                    if old_string not in modified_content:
+                                        print(f"       ⚠ Edit {i}: old_string not found")
+                                        print(f"         Issue: {issue[:80]}")
+                                        print(f"         Looking for: {old_string[:100]}...")
+
+                                        # Try to find it with Tester Agent help
+                                        print(f"       🔍 Asking Tester Agent to locate the code...")
+
+                                        locate_prompt = f"""Find the exact code to fix in this file.
+
+**File:** {file_to_fix}
+**Issue:** {issue}
+**Current file content:**
+```python
+{modified_content}
 ```
 
-**CRITICAL FIXES TO APPLY:**
-{chr(10).join([f"Fix {i+1}: {f['code_change']}" for i, f in enumerate(file_fixes)])}
+**What we're trying to fix:**
+{edit.get('explanation', 'N/A')}
 
-Return ONLY the corrected code for {file_to_fix}, no JSON wrapper, no markdown.
-Start directly with the code.
+**Your task:**
+1. Find the problematic code in the file above
+2. Return the EXACT old_string (with correct indentation!)
+3. Return the corrected new_string
+
+Return JSON:
+```json
+{{
+    "old_string": "exact code from file...",
+    "new_string": "corrected code..."
+}}
+```
 """
 
-                                try:
-                                    # Use prompt caching for fix regeneration
-                                    regen_response = claude.messages.create(
-                                        model="claude-sonnet-4-5-20250929",
-                                        max_tokens=4000,
-                                        messages=[{
-                                            "role": "user",
-                                            "content": [
-                                                {
-                                                    "type": "text",
-                                                    "text": fix_file_prompt,
-                                                    "cache_control": {"type": "ephemeral"}
-                                                }
-                                            ]
-                                        }],
-                                        system=[
-                                            {
-                                                "type": "text",
-                                                "text": "You are a Code Generator Agent fixing bugs. Return ONLY the corrected file content.",
-                                                "cache_control": {"type": "ephemeral"}
-                                            }
-                                        ]
-                                    )
+                                        try:
+                                            locate_response = claude.messages.create(
+                                                model=get_agent_model('fixer'),  # Haiku for fast code location
+                                                max_tokens=2000,
+                                                messages=[{"role": "user", "content": locate_prompt}],
+                                                system="You are a Code Locator. Return ONLY valid JSON with exact code strings."
+                                            )
 
-                                    fixed_content = regen_response.content[0].text.strip()
+                                            locate_text = locate_response.content[0].text
+                                            if "```json" in locate_text:
+                                                locate_text = locate_text.split("```json")[1].split("```")[0].strip()
+                                            elif "```" in locate_text:
+                                                locate_text = locate_text.split("```")[1].split("```")[0].strip()
 
-                                    # Clean up markdown if present
-                                    if fixed_content.startswith("```"):
-                                        lines = fixed_content.split('\n')
-                                        if lines[0].startswith("```"):
-                                            lines = lines[1:]
-                                        if lines and lines[-1].strip() == "```":
-                                            lines = lines[:-1]
-                                        fixed_content = '\n'.join(lines).strip()
+                                            locate_data = json.loads(locate_text)
+                                            old_string = locate_data['old_string']
+                                            new_string = locate_data['new_string']
 
-                                    # Write fixed file (using relative path to avoid double nesting)
-                                    fixed_file_path = output_dir / relative_file_path
-                                    fixed_file_path.parent.mkdir(parents=True, exist_ok=True)
+                                            if old_string not in modified_content:
+                                                print(f"       ✗ Still not found - skipping edit {i}")
+                                                continue
 
-                                    with open(fixed_file_path, 'w', encoding='utf-8') as f:
-                                        f.write(fixed_content)
+                                            print(f"       ✓ Located code successfully")
 
-                                    print(f"       ✓ {file_to_fix} fixed ({len(fixed_content)} chars)")
+                                        except Exception as e:
+                                            print(f"       ✗ Failed to locate code: {str(e)}")
+                                            continue
 
-                                except Exception as e:
-                                    print(f"       ✗ Failed to fix {file_to_fix}: {e}")
+                                    # Apply the edit (replace first occurrence only)
+                                    modified_content = modified_content.replace(old_string, new_string, 1)
+                                    edit_success_count += 1
+                                    print(f"       ✓ Edit {i}/{len(file_edits)}: {issue[:60]}...")
+
+                                # Write modified file back
+                                if edit_success_count > 0:
+                                    with open(file_path, 'w', encoding='utf-8') as f:
+                                        f.write(modified_content)
+                                    print(f"       ✅ {file_to_fix} updated ({edit_success_count}/{len(file_edits)} edits applied)")
+                                else:
+                                    print(f"       ✗ No edits applied to {file_to_fix}")
 
                             print(f"   ✅ Fixes applied, retrying tests...")
 
