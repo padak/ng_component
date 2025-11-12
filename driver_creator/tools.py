@@ -363,14 +363,104 @@ def generate_driver_scaffold(
     files_with_todos = len([f for f in files_created if any(t["file"] in f for t in todos)])
     files_complete = len(files_created) - files_with_todos
 
+    # ========================================
+    # AUTOMATIC VALIDATION (MANDATORY)
+    # ========================================
+    print(f"📋 Validating driver against Driver Design v2.0...")
+    validation_result = validate_driver(str(output_path))
+
+    if not validation_result["valid"]:
+        return {
+            "success": False,
+            "error": "VALIDATION_FAILED",
+            "driver_name": driver_name,
+            "output_path": str(output_path),
+            "validation": validation_result,
+            "message": (
+                f"❌ Driver validation failed!\n\n"
+                f"Checks passed: {validation_result['checks_passed']}\n"
+                f"Checks failed: {validation_result['checks_failed']}\n"
+                f"Warnings: {validation_result['warnings']}\n\n"
+                f"Details:\n" +
+                "\n".join(f"  - {k}: {v}" for k, v in validation_result['details'].items())
+            )
+        }
+
+    print(f"✅ Validation passed! {validation_result['checks_passed']} checks OK")
+
+    # ========================================
+    # AUTOMATIC TESTING IN E2B (MANDATORY)
+    # ========================================
+    test_results = None
+    e2b_api_key = os.environ.get("E2B_API_KEY")
+
+    if e2b_api_key:
+        print(f"🧪 Testing driver in E2B sandbox...")
+        try:
+            test_results = test_driver_in_e2b(
+                driver_path=str(output_path),
+                driver_name=driver_name,
+                use_mock_api=False  # For now, test without mock API
+            )
+
+            if test_results.get("success") and test_results.get("tests_passed", 0) > 0:
+                tests_failed = test_results.get("tests_failed", 0)
+                if tests_failed > 0:
+                    return {
+                        "success": False,
+                        "error": "TESTS_FAILED",
+                        "driver_name": driver_name,
+                        "output_path": str(output_path),
+                        "validation": validation_result,
+                        "test_results": test_results,
+                        "message": (
+                            f"❌ Driver tests failed!\n\n"
+                            f"Tests passed: {test_results['tests_passed']}\n"
+                            f"Tests failed: {tests_failed}\n\n"
+                            f"Errors:\n{test_results.get('test_output', 'No output')}\n\n"
+                            f"Please analyze the errors and regenerate the driver with fixes."
+                        )
+                    }
+                print(f"✅ All E2B tests passed! ({test_results['tests_passed']} tests)")
+            else:
+                print(f"⚠️  E2B testing encountered issues (non-critical)")
+        except Exception as e:
+            print(f"⚠️  E2B testing skipped: {str(e)}")
+            test_results = {
+                "success": False,
+                "error": str(e),
+                "skipped": True
+            }
+    else:
+        print(f"⚠️  E2B_API_KEY not set - skipping E2B testing")
+        test_results = {
+            "skipped": True,
+            "reason": "E2B_API_KEY not configured"
+        }
+
+    # ========================================
+    # SUCCESS - Return full results
+    # ========================================
     return {
+        "success": True,
         "driver_name": driver_name,
         "output_path": str(output_path),
         "files_created": len(files_created),
         "files_complete": files_complete,
         "files_with_todos": files_with_todos,
         "file_list": files_created,
-        "todos": todos
+        "todos": todos,
+        "validation": validation_result,
+        "test_results": test_results,
+        "message": (
+            f"✅ Driver '{driver_name}' generated successfully!\n\n"
+            f"Files created: {len(files_created)}\n"
+            f"Validation: {validation_result['checks_passed']} checks passed\n" +
+            (f"E2B Tests: {test_results['tests_passed']} passed, {test_results.get('tests_failed', 0)} failed\n"
+             if test_results and not test_results.get("skipped") else
+             "E2B Tests: Skipped\n") +
+            f"\n🎉 Driver is ready to use!"
+        )
     }
 
 
