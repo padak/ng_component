@@ -1,0 +1,2694 @@
+
+================================================================================
+Timestamp: 2025-11-12T13:21:54.451155
+================================================================================
+Generate client.py for Open-Meteo driver.
+
+**File Purpose:** Main OpenMeteoDriver class with all core methods
+
+**Research Data:**
+```json
+{
+  "api_name": "Open-Meteo",
+  "api_type": "REST",
+  "base_url": "https://api.open-meteo.com/v1",
+  "requires_auth": false,
+  "auth_type": "none",
+  "auth_location": null,
+  "auth_key_name": null,
+  "endpoints": [
+    {
+      "name": "forecast",
+      "path": "/forecast",
+      "method": "GET",
+      "description": "Get weather forecast data for a location",
+      "required_params": [
+        "latitude",
+        "longitude"
+      ],
+      "optional_params": [
+        "hourly",
+        "daily",
+        "current",
+        "minutely_15",
+        "timezone",
+        "forecast_days",
+        "forecast_hours",
+        "forecast_minutely_15",
+        "past_days",
+        "past_hours",
+        "past_minutely_15",
+        "temperature_unit",
+        "windspeed_unit",
+        "precipitation_unit",
+        "timeformat",
+        "cell_selection"
+      ],
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "description": "WGS84 latitude of the location"
+          },
+          "longitude": {
+            "type": "number",
+            "description": "WGS84 longitude of the location"
+          },
+          "elevation": {
+            "type": "number",
+            "description": "Elevation of the location in meters"
+          },
+          "generationtime_ms": {
+            "type": "number",
+            "description": "Time taken to generate the forecast in milliseconds"
+          },
+          "utc_offset_seconds": {
+            "type": "integer",
+            "description": "UTC offset in seconds"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone identifier"
+          },
+          "timezone_abbreviation": {
+            "type": "string",
+            "description": "Timezone abbreviation"
+          },
+          "current": {
+            "type": "object",
+            "description": "Current weather conditions",
+            "properties": {
+              "time": {
+                "type": "string"
+              },
+              "interval": {
+                "type": "integer"
+              },
+              "temperature": {
+                "type": "number"
+              },
+              "relative_humidity": {
+                "type": "integer"
+              },
+              "apparent_temperature": {
+                "type": "number"
+              },
+              "precipitation": {
+                "type": "number"
+              },
+              "weather_code": {
+                "type": "integer"
+              },
+              "wind_speed": {
+                "type": "number"
+              },
+              "wind_direction": {
+                "type": "integer"
+              }
+            }
+          },
+          "hourly": {
+            "type": "object",
+            "description": "Hourly forecast data",
+            "properties": {
+              "time": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "temperature_2m": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "relative_humidity_2m": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "precipitation": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "weather_code": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "wind_speed_10m": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "daily": {
+            "type": "object",
+            "description": "Daily forecast data",
+            "properties": {
+              "time": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "temperature_2m_max": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "temperature_2m_min": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "precipitation_sum": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "weather_code": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "wind_speed_10m_max": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      },
+      "example_request": "GET /forecast?latitude=52.52&longitude=13.41&current=true&hourly=temperature_2m,precipitation",
+      "example_response": {
+        "latitude": 52.52,
+        "longitude": 13.41,
+        "generationtime_ms": 2.2119,
+        "utc_offset_seconds": 3600,
+        "timezone": "Europe/Berlin",
+        "current": {
+          "temperature": 15.3,
+          "weather_code": 0,
+          "wind_speed": 10.3
+        }
+      }
+    },
+    {
+      "name": "marine",
+      "path": "/marine",
+      "method": "GET",
+      "description": "Get marine/ocean forecast data (waves, swell)",
+      "required_params": [
+        "latitude",
+        "longitude"
+      ],
+      "optional_params": [
+        "hourly",
+        "daily",
+        "timezone",
+        "forecast_days",
+        "past_days"
+      ],
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "hourly": {
+            "type": "object",
+            "properties": {
+              "wave_height": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "wave_direction": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "wave_period": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "air_quality",
+      "path": "/air-quality",
+      "method": "GET",
+      "description": "Get air quality data",
+      "required_params": [
+        "latitude",
+        "longitude"
+      ],
+      "optional_params": [
+        "hourly",
+        "daily",
+        "timezone",
+        "forecast_days",
+        "past_days"
+      ],
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "hourly": {
+            "type": "object",
+            "properties": {
+              "pm10": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "pm2_5": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "ozone": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "nitrogen_dioxide": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "rate_limits": {
+    "per_second": null,
+    "per_minute": null,
+    "per_hour": null,
+    "notes": "Open-Meteo offers free tier with no strict rate limiting. Commercial use has fair-use policy. No API key required for free tier.",
+    "headers": []
+  },
+  "pagination": "none",
+  "error_codes": [
+    400,
+    401,
+    403,
+    404,
+    422,
+    429,
+    500,
+    503
+  ],
+  "error_response_format": {
+    "type": "object",
+    "properties": {
+      "error": {
+        "type": "boolean"
+      },
+      "reason": {
+        "type": "string"
+      },
+      "message": {
+        "type": "string"
+      }
+    }
+  },
+  "common_errors": [
+    {
+      "code": 400,
+      "reason": "Bad Request - Invalid parameters"
+    },
+    {
+      "code": 422,
+      "reason": "Unprocessable Entity - Missing or invalid required parameters"
+    },
+    {
+      "code": 429,
+      "reason": "Rate Limit Exceeded"
+    },
+    {
+      "code": 503,
+      "reason": "Service Unavailable"
+    }
+  ],
+  "notes": [
+    "No authentication required for free tier",
+    "Uses query parameters for all API options",
+    "Returns JSON responses only",
+    "Supports multiple weather variables and aggregation levels",
+    "Latitude and longitude are always required parameters",
+    "Temperature unit, windspeed unit, and precipitation unit can be customized",
+    "Timezone parameter accepts IANA timezone identifiers",
+    "API supports current, hourly, daily, and minutely data at different granularities",
+    "Response includes generation time in milliseconds",
+    "Large number of optional parameters for customizing forecast data",
+    "Free tier has no API key requirement but may have fair-use limits",
+    "Multiple endpoints available: /forecast (weather), /marine (ocean), /air-quality"
+  ],
+  "additional_endpoints": [
+    {
+      "name": "geocoding",
+      "path": "/geocoding",
+      "method": "GET",
+      "description": "Search for locations by name",
+      "required_params": [
+        "name"
+      ],
+      "optional_params": [
+        "count",
+        "language",
+        "format"
+      ]
+    },
+    {
+      "name": "reverse_geocoding",
+      "path": "/reverse",
+      "method": "GET",
+      "description": "Get location name from coordinates",
+      "required_params": [
+        "latitude",
+        "longitude"
+      ],
+      "optional_params": [
+        "language",
+        "format"
+      ]
+    }
+  ],
+  "http_methods": [
+    "GET"
+  ],
+  "response_format": "JSON",
+  "content_type": "application/json",
+  "confidence": 0.92
+}
+```
+
+**Driver Class Name:** OpenMeteoDriver
+
+**Requirements for this file:**
+
+- Class name: OpenMeteoDriver
+- Methods: __init__, from_env, get_capabilities, list_objects, get_fields, query/read
+- Include retry logic with exponential backoff
+- Validate connection in __init__ (fail fast!)
+- Match API type from research (REST/GraphQL/Database/etc.)
+- If public API (no auth required), make api_key optional with default None
+- Use requests.Session() for connection pooling
+- Clear error messages with custom exceptions
+
+**⚠️ CRITICAL REQUIREMENTS (MUST FOLLOW EXACTLY):**
+
+1. **list_objects() signature:**
+   ```python
+   def list_objects(self) -> List[str]:
+       """Return list of object names (strings only)"""
+       # WRONG: return [{'name': 'users', 'path': '/users'}]  ❌
+       # RIGHT: return ['users', 'posts', 'comments']  ✅
+
+       # If API has no schema endpoint, hardcode known objects:
+       return ['object1', 'object2', 'object3']  # Simple strings!
+   ```
+
+2. **get_fields(object_name: str) signature:**
+   ```python
+   def get_fields(self, object_name: str) -> Dict[str, Any]:
+       """Return field schema for object"""
+       return {
+           "field_name": {
+               "type": "string",
+               "required": True,
+               "nullable": False
+           }
+       }
+   ```
+
+3. **If API doesn't provide metadata:**
+   - list_objects(): Return hardcoded list of endpoint names as strings
+   - get_fields(): Return empty dict {} or infer from sample data
+   - Document this limitation in docstrings
+
+**VALIDATION (self-check before returning code):**
+- [ ] list_objects() returns List[str] (NOT List[Dict])
+- [ ] get_fields() returns Dict[str, Any]
+- [ ] No import errors (all imports are valid)
+- [ ] Proper indentation (no mixed tabs/spaces)
+
+
+**Previous Learnings:**
+- results
+
+Return ONLY the code for client.py. No JSON wrapper, no markdown code blocks.
+Start directly with the code (or markdown for README).
+
+
+
+================================================================================
+Timestamp: 2025-11-12T13:22:38.014082
+================================================================================
+Generate __init__.py for Open-Meteo driver.
+
+**File Purpose:** Package initialization, exports
+
+**Research Data:**
+```json
+{
+  "api_name": "Open-Meteo",
+  "api_type": "REST",
+  "base_url": "https://api.open-meteo.com/v1",
+  "requires_auth": false,
+  "auth_type": "none",
+  "auth_location": null,
+  "auth_key_name": null,
+  "endpoints": [
+    {
+      "name": "forecast",
+      "path": "/forecast",
+      "method": "GET",
+      "description": "Get weather forecast data for a location",
+      "required_params": [
+        "latitude",
+        "longitude"
+      ],
+      "optional_params": [
+        "hourly",
+        "daily",
+        "current",
+        "minutely_15",
+        "timezone",
+        "forecast_days",
+        "forecast_hours",
+        "forecast_minutely_15",
+        "past_days",
+        "past_hours",
+        "past_minutely_15",
+        "temperature_unit",
+        "windspeed_unit",
+        "precipitation_unit",
+        "timeformat",
+        "cell_selection"
+      ],
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "description": "WGS84 latitude of the location"
+          },
+          "longitude": {
+            "type": "number",
+            "description": "WGS84 longitude of the location"
+          },
+          "elevation": {
+            "type": "number",
+            "description": "Elevation of the location in meters"
+          },
+          "generationtime_ms": {
+            "type": "number",
+            "description": "Time taken to generate the forecast in milliseconds"
+          },
+          "utc_offset_seconds": {
+            "type": "integer",
+            "description": "UTC offset in seconds"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone identifier"
+          },
+          "timezone_abbreviation": {
+            "type": "string",
+            "description": "Timezone abbreviation"
+          },
+          "current": {
+            "type": "object",
+            "description": "Current weather conditions",
+            "properties": {
+              "time": {
+                "type": "string"
+              },
+              "interval": {
+                "type": "integer"
+              },
+              "temperature": {
+                "type": "number"
+              },
+              "relative_humidity": {
+                "type": "integer"
+              },
+              "apparent_temperature": {
+                "type": "number"
+              },
+              "precipitation": {
+                "type": "number"
+              },
+              "weather_code": {
+                "type": "integer"
+              },
+              "wind_speed": {
+                "type": "number"
+              },
+              "wind_direction": {
+                "type": "integer"
+              }
+            }
+          },
+          "hourly": {
+            "type": "object",
+            "description": "Hourly forecast data",
+            "properties": {
+              "time": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "temperature_2m": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "relative_humidity_2m": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "precipitation": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "weather_code": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "wind_speed_10m": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "daily": {
+            "type": "object",
+            "description": "Daily forecast data",
+            "properties": {
+              "time": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "temperature_2m_max": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "temperature_2m_min": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "precipitation_sum": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "weather_code": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "wind_speed_10m_max": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      },
+      "example_request": "GET /forecast?latitude=52.52&longitude=13.41&current=true&hourly=temperature_2m,precipitation",
+      "example_response": {
+        "latitude": 52.52,
+        "longitude": 13.41,
+        "generationtime_ms": 2.2119,
+        "utc_offset_seconds": 3600,
+        "timezone": "Europe/Berlin",
+        "current": {
+          "temperature": 15.3,
+          "weather_code": 0,
+          "wind_speed": 10.3
+        }
+      }
+    },
+    {
+      "name": "marine",
+      "path": "/marine",
+      "method": "GET",
+      "description": "Get marine/ocean forecast data (waves, swell)",
+      "required_params": [
+        "latitude",
+        "longitude"
+      ],
+      "optional_params": [
+        "hourly",
+        "daily",
+        "timezone",
+        "forecast_days",
+        "past_days"
+      ],
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "hourly": {
+            "type": "object",
+            "properties": {
+              "wave_height": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "wave_direction": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "wave_period": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "air_quality",
+      "path": "/air-quality",
+      "method": "GET",
+      "description": "Get air quality data",
+      "required_params": [
+        "latitude",
+        "longitude"
+      ],
+      "optional_params": [
+        "hourly",
+        "daily",
+        "timezone",
+        "forecast_days",
+        "past_days"
+      ],
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "hourly": {
+            "type": "object",
+            "properties": {
+              "pm10": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "pm2_5": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "ozone": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "nitrogen_dioxide": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "rate_limits": {
+    "per_second": null,
+    "per_minute": null,
+    "per_hour": null,
+    "notes": "Open-Meteo offers free tier with no strict rate limiting. Commercial use has fair-use policy. No API key required for free tier.",
+    "headers": []
+  },
+  "pagination": "none",
+  "error_codes": [
+    400,
+    401,
+    403,
+    404,
+    422,
+    429,
+    500,
+    503
+  ],
+  "error_response_format": {
+    "type": "object",
+    "properties": {
+      "error": {
+        "type": "boolean"
+      },
+      "reason": {
+        "type": "string"
+      },
+      "message": {
+        "type": "string"
+      }
+    }
+  },
+  "common_errors": [
+    {
+      "code": 400,
+      "reason": "Bad Request - Invalid parameters"
+    },
+    {
+      "code": 422,
+      "reason": "Unprocessable Entity - Missing or invalid required parameters"
+    },
+    {
+      "code": 429,
+      "reason": "Rate Limit Exceeded"
+    },
+    {
+      "code": 503,
+      "reason": "Service Unavailable"
+    }
+  ],
+  "notes": [
+    "No authentication required for free tier",
+    "Uses query parameters for all API options",
+    "Returns JSON responses only",
+    "Supports multiple weather variables and aggregation levels",
+    "Latitude and longitude are always required parameters",
+    "Temperature unit, windspeed unit, and precipitation unit can be customized",
+    "Timezone parameter accepts IANA timezone identifiers",
+    "API supports current, hourly, daily, and minutely data at different granularities",
+    "Response includes generation time in milliseconds",
+    "Large number of optional parameters for customizing forecast data",
+    "Free tier has no API key requirement but may have fair-use limits",
+    "Multiple endpoints available: /forecast (weather), /marine (ocean), /air-quality"
+  ],
+  "additional_endpoints": [
+    {
+      "name": "geocoding",
+      "path": "/geocoding",
+      "method": "GET",
+      "description": "Search for locations by name",
+      "required_params": [
+        "name"
+      ],
+      "optional_params": [
+        "count",
+        "language",
+        "format"
+      ]
+    },
+    {
+      "name": "reverse_geocoding",
+      "path": "/reverse",
+      "method": "GET",
+      "description": "Get location name from coordinates",
+      "required_params": [
+        "latitude",
+        "longitude"
+      ],
+      "optional_params": [
+        "language",
+        "format"
+      ]
+    }
+  ],
+  "http_methods": [
+    "GET"
+  ],
+  "response_format": "JSON",
+  "content_type": "application/json",
+  "confidence": 0.92
+}
+```
+
+**Driver Class Name:** OpenMeteoDriver
+
+**Requirements for this file:**
+
+- Export OpenMeteoDriver
+- Export all custom exceptions
+- Set __version__ = "1.0.0"
+
+**⚠️ CRITICAL:**
+- Import from .client (NOT .driver)
+- Proper indentation (4 spaces, no tabs)
+- No trailing commas in single-item imports
+
+Example:
+```python
+from .client import OpenMeteoDriver
+from .exceptions import (
+    DriverError,
+    AuthenticationError
+)
+```
+
+
+**Previous Learnings:**
+- results
+
+Return ONLY the code for __init__.py. No JSON wrapper, no markdown code blocks.
+Start directly with the code (or markdown for README).
+
+
+
+================================================================================
+Timestamp: 2025-11-12T13:22:43.037502
+================================================================================
+Generate exceptions.py for Open-Meteo driver.
+
+**File Purpose:** Custom exception hierarchy
+
+**Research Data:**
+```json
+{
+  "api_name": "Open-Meteo",
+  "api_type": "REST",
+  "base_url": "https://api.open-meteo.com/v1",
+  "requires_auth": false,
+  "auth_type": "none",
+  "auth_location": null,
+  "auth_key_name": null,
+  "endpoints": [
+    {
+      "name": "forecast",
+      "path": "/forecast",
+      "method": "GET",
+      "description": "Get weather forecast data for a location",
+      "required_params": [
+        "latitude",
+        "longitude"
+      ],
+      "optional_params": [
+        "hourly",
+        "daily",
+        "current",
+        "minutely_15",
+        "timezone",
+        "forecast_days",
+        "forecast_hours",
+        "forecast_minutely_15",
+        "past_days",
+        "past_hours",
+        "past_minutely_15",
+        "temperature_unit",
+        "windspeed_unit",
+        "precipitation_unit",
+        "timeformat",
+        "cell_selection"
+      ],
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "description": "WGS84 latitude of the location"
+          },
+          "longitude": {
+            "type": "number",
+            "description": "WGS84 longitude of the location"
+          },
+          "elevation": {
+            "type": "number",
+            "description": "Elevation of the location in meters"
+          },
+          "generationtime_ms": {
+            "type": "number",
+            "description": "Time taken to generate the forecast in milliseconds"
+          },
+          "utc_offset_seconds": {
+            "type": "integer",
+            "description": "UTC offset in seconds"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone identifier"
+          },
+          "timezone_abbreviation": {
+            "type": "string",
+            "description": "Timezone abbreviation"
+          },
+          "current": {
+            "type": "object",
+            "description": "Current weather conditions",
+            "properties": {
+              "time": {
+                "type": "string"
+              },
+              "interval": {
+                "type": "integer"
+              },
+              "temperature": {
+                "type": "number"
+              },
+              "relative_humidity": {
+                "type": "integer"
+              },
+              "apparent_temperature": {
+                "type": "number"
+              },
+              "precipitation": {
+                "type": "number"
+              },
+              "weather_code": {
+                "type": "integer"
+              },
+              "wind_speed": {
+                "type": "number"
+              },
+              "wind_direction": {
+                "type": "integer"
+              }
+            }
+          },
+          "hourly": {
+            "type": "object",
+            "description": "Hourly forecast data",
+            "properties": {
+              "time": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "temperature_2m": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "relative_humidity_2m": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "precipitation": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "weather_code": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "wind_speed_10m": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "daily": {
+            "type": "object",
+            "description": "Daily forecast data",
+            "properties": {
+              "time": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "temperature_2m_max": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "temperature_2m_min": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "precipitation_sum": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "weather_code": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "wind_speed_10m_max": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      },
+      "example_request": "GET /forecast?latitude=52.52&longitude=13.41&current=true&hourly=temperature_2m,precipitation",
+      "example_response": {
+        "latitude": 52.52,
+        "longitude": 13.41,
+        "generationtime_ms": 2.2119,
+        "utc_offset_seconds": 3600,
+        "timezone": "Europe/Berlin",
+        "current": {
+          "temperature": 15.3,
+          "weather_code": 0,
+          "wind_speed": 10.3
+        }
+      }
+    },
+    {
+      "name": "marine",
+      "path": "/marine",
+      "method": "GET",
+      "description": "Get marine/ocean forecast data (waves, swell)",
+      "required_params": [
+        "latitude",
+        "longitude"
+      ],
+      "optional_params": [
+        "hourly",
+        "daily",
+        "timezone",
+        "forecast_days",
+        "past_days"
+      ],
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "hourly": {
+            "type": "object",
+            "properties": {
+              "wave_height": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "wave_direction": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "wave_period": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "air_quality",
+      "path": "/air-quality",
+      "method": "GET",
+      "description": "Get air quality data",
+      "required_params": [
+        "latitude",
+        "longitude"
+      ],
+      "optional_params": [
+        "hourly",
+        "daily",
+        "timezone",
+        "forecast_days",
+        "past_days"
+      ],
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "hourly": {
+            "type": "object",
+            "properties": {
+              "pm10": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "pm2_5": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "ozone": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "nitrogen_dioxide": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "rate_limits": {
+    "per_second": null,
+    "per_minute": null,
+    "per_hour": null,
+    "notes": "Open-Meteo offers free tier with no strict rate limiting. Commercial use has fair-use policy. No API key required for free tier.",
+    "headers": []
+  },
+  "pagination": "none",
+  "error_codes": [
+    400,
+    401,
+    403,
+    404,
+    422,
+    429,
+    500,
+    503
+  ],
+  "error_response_format": {
+    "type": "object",
+    "properties": {
+      "error": {
+        "type": "boolean"
+      },
+      "reason": {
+        "type": "string"
+      },
+      "message": {
+        "type": "string"
+      }
+    }
+  },
+  "common_errors": [
+    {
+      "code": 400,
+      "reason": "Bad Request - Invalid parameters"
+    },
+    {
+      "code": 422,
+      "reason": "Unprocessable Entity - Missing or invalid required parameters"
+    },
+    {
+      "code": 429,
+      "reason": "Rate Limit Exceeded"
+    },
+    {
+      "code": 503,
+      "reason": "Service Unavailable"
+    }
+  ],
+  "notes": [
+    "No authentication required for free tier",
+    "Uses query parameters for all API options",
+    "Returns JSON responses only",
+    "Supports multiple weather variables and aggregation levels",
+    "Latitude and longitude are always required parameters",
+    "Temperature unit, windspeed unit, and precipitation unit can be customized",
+    "Timezone parameter accepts IANA timezone identifiers",
+    "API supports current, hourly, daily, and minutely data at different granularities",
+    "Response includes generation time in milliseconds",
+    "Large number of optional parameters for customizing forecast data",
+    "Free tier has no API key requirement but may have fair-use limits",
+    "Multiple endpoints available: /forecast (weather), /marine (ocean), /air-quality"
+  ],
+  "additional_endpoints": [
+    {
+      "name": "geocoding",
+      "path": "/geocoding",
+      "method": "GET",
+      "description": "Search for locations by name",
+      "required_params": [
+        "name"
+      ],
+      "optional_params": [
+        "count",
+        "language",
+        "format"
+      ]
+    },
+    {
+      "name": "reverse_geocoding",
+      "path": "/reverse",
+      "method": "GET",
+      "description": "Get location name from coordinates",
+      "required_params": [
+        "latitude",
+        "longitude"
+      ],
+      "optional_params": [
+        "language",
+        "format"
+      ]
+    }
+  ],
+  "http_methods": [
+    "GET"
+  ],
+  "response_format": "JSON",
+  "content_type": "application/json",
+  "confidence": 0.92
+}
+```
+
+**Driver Class Name:** OpenMeteoDriver
+
+**Requirements for this file:**
+
+- Base: DriverError(Exception)
+- Specific: AuthenticationError, ConnectionError, QuerySyntaxError, RateLimitError, ObjectNotFoundError
+- Each exception should have helpful error messages
+
+
+**Previous Learnings:**
+- results
+
+Return ONLY the code for exceptions.py. No JSON wrapper, no markdown code blocks.
+Start directly with the code (or markdown for README).
+
+
+
+================================================================================
+Timestamp: 2025-11-12T13:23:01.391589
+================================================================================
+Generate README.md for Open-Meteo driver.
+
+**File Purpose:** Complete documentation with examples
+
+**Research Data:**
+```json
+{
+  "api_name": "Open-Meteo",
+  "api_type": "REST",
+  "base_url": "https://api.open-meteo.com/v1",
+  "requires_auth": false,
+  "auth_type": "none",
+  "auth_location": null,
+  "auth_key_name": null,
+  "endpoints": [
+    {
+      "name": "forecast",
+      "path": "/forecast",
+      "method": "GET",
+      "description": "Get weather forecast data for a location",
+      "required_params": [
+        "latitude",
+        "longitude"
+      ],
+      "optional_params": [
+        "hourly",
+        "daily",
+        "current",
+        "minutely_15",
+        "timezone",
+        "forecast_days",
+        "forecast_hours",
+        "forecast_minutely_15",
+        "past_days",
+        "past_hours",
+        "past_minutely_15",
+        "temperature_unit",
+        "windspeed_unit",
+        "precipitation_unit",
+        "timeformat",
+        "cell_selection"
+      ],
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "description": "WGS84 latitude of the location"
+          },
+          "longitude": {
+            "type": "number",
+            "description": "WGS84 longitude of the location"
+          },
+          "elevation": {
+            "type": "number",
+            "description": "Elevation of the location in meters"
+          },
+          "generationtime_ms": {
+            "type": "number",
+            "description": "Time taken to generate the forecast in milliseconds"
+          },
+          "utc_offset_seconds": {
+            "type": "integer",
+            "description": "UTC offset in seconds"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone identifier"
+          },
+          "timezone_abbreviation": {
+            "type": "string",
+            "description": "Timezone abbreviation"
+          },
+          "current": {
+            "type": "object",
+            "description": "Current weather conditions",
+            "properties": {
+              "time": {
+                "type": "string"
+              },
+              "interval": {
+                "type": "integer"
+              },
+              "temperature": {
+                "type": "number"
+              },
+              "relative_humidity": {
+                "type": "integer"
+              },
+              "apparent_temperature": {
+                "type": "number"
+              },
+              "precipitation": {
+                "type": "number"
+              },
+              "weather_code": {
+                "type": "integer"
+              },
+              "wind_speed": {
+                "type": "number"
+              },
+              "wind_direction": {
+                "type": "integer"
+              }
+            }
+          },
+          "hourly": {
+            "type": "object",
+            "description": "Hourly forecast data",
+            "properties": {
+              "time": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "temperature_2m": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "relative_humidity_2m": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "precipitation": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "weather_code": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "wind_speed_10m": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "daily": {
+            "type": "object",
+            "description": "Daily forecast data",
+            "properties": {
+              "time": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "temperature_2m_max": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "temperature_2m_min": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "precipitation_sum": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "weather_code": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "wind_speed_10m_max": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      },
+      "example_request": "GET /forecast?latitude=52.52&longitude=13.41&current=true&hourly=temperature_2m,precipitation",
+      "example_response": {
+        "latitude": 52.52,
+        "longitude": 13.41,
+        "generationtime_ms": 2.2119,
+        "utc_offset_seconds": 3600,
+        "timezone": "Europe/Berlin",
+        "current": {
+          "temperature": 15.3,
+          "weather_code": 0,
+          "wind_speed": 10.3
+        }
+      }
+    },
+    {
+      "name": "marine",
+      "path": "/marine",
+      "method": "GET",
+      "description": "Get marine/ocean forecast data (waves, swell)",
+      "required_params": [
+        "latitude",
+        "longitude"
+      ],
+      "optional_params": [
+        "hourly",
+        "daily",
+        "timezone",
+        "forecast_days",
+        "past_days"
+      ],
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "hourly": {
+            "type": "object",
+            "properties": {
+              "wave_height": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "wave_direction": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "wave_period": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "air_quality",
+      "path": "/air-quality",
+      "method": "GET",
+      "description": "Get air quality data",
+      "required_params": [
+        "latitude",
+        "longitude"
+      ],
+      "optional_params": [
+        "hourly",
+        "daily",
+        "timezone",
+        "forecast_days",
+        "past_days"
+      ],
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "hourly": {
+            "type": "object",
+            "properties": {
+              "pm10": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "pm2_5": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "ozone": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "nitrogen_dioxide": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "rate_limits": {
+    "per_second": null,
+    "per_minute": null,
+    "per_hour": null,
+    "notes": "Open-Meteo offers free tier with no strict rate limiting. Commercial use has fair-use policy. No API key required for free tier.",
+    "headers": []
+  },
+  "pagination": "none",
+  "error_codes": [
+    400,
+    401,
+    403,
+    404,
+    422,
+    429,
+    500,
+    503
+  ],
+  "error_response_format": {
+    "type": "object",
+    "properties": {
+      "error": {
+        "type": "boolean"
+      },
+      "reason": {
+        "type": "string"
+      },
+      "message": {
+        "type": "string"
+      }
+    }
+  },
+  "common_errors": [
+    {
+      "code": 400,
+      "reason": "Bad Request - Invalid parameters"
+    },
+    {
+      "code": 422,
+      "reason": "Unprocessable Entity - Missing or invalid required parameters"
+    },
+    {
+      "code": 429,
+      "reason": "Rate Limit Exceeded"
+    },
+    {
+      "code": 503,
+      "reason": "Service Unavailable"
+    }
+  ],
+  "notes": [
+    "No authentication required for free tier",
+    "Uses query parameters for all API options",
+    "Returns JSON responses only",
+    "Supports multiple weather variables and aggregation levels",
+    "Latitude and longitude are always required parameters",
+    "Temperature unit, windspeed unit, and precipitation unit can be customized",
+    "Timezone parameter accepts IANA timezone identifiers",
+    "API supports current, hourly, daily, and minutely data at different granularities",
+    "Response includes generation time in milliseconds",
+    "Large number of optional parameters for customizing forecast data",
+    "Free tier has no API key requirement but may have fair-use limits",
+    "Multiple endpoints available: /forecast (weather), /marine (ocean), /air-quality"
+  ],
+  "additional_endpoints": [
+    {
+      "name": "geocoding",
+      "path": "/geocoding",
+      "method": "GET",
+      "description": "Search for locations by name",
+      "required_params": [
+        "name"
+      ],
+      "optional_params": [
+        "count",
+        "language",
+        "format"
+      ]
+    },
+    {
+      "name": "reverse_geocoding",
+      "path": "/reverse",
+      "method": "GET",
+      "description": "Get location name from coordinates",
+      "required_params": [
+        "latitude",
+        "longitude"
+      ],
+      "optional_params": [
+        "language",
+        "format"
+      ]
+    }
+  ],
+  "http_methods": [
+    "GET"
+  ],
+  "response_format": "JSON",
+  "content_type": "application/json",
+  "confidence": 0.92
+}
+```
+
+**Driver Class Name:** OpenMeteoDriver
+
+**Requirements for this file:**
+
+- Overview of Open-Meteo driver
+- Installation instructions
+- Quick start example
+- Authentication setup (if needed)
+- Usage examples
+- API reference
+- Troubleshooting common issues
+
+
+**Previous Learnings:**
+- results
+
+Return ONLY the code for README.md. No JSON wrapper, no markdown code blocks.
+Start directly with the code (or markdown for README).
+
+
+
+================================================================================
+Timestamp: 2025-11-12T13:23:27.685336
+================================================================================
+Generate examples/list_objects.py for Open-Meteo driver.
+
+**File Purpose:** Example: List all available objects
+
+**Research Data:**
+```json
+{
+  "api_name": "Open-Meteo",
+  "api_type": "REST",
+  "base_url": "https://api.open-meteo.com/v1",
+  "requires_auth": false,
+  "auth_type": "none",
+  "auth_location": null,
+  "auth_key_name": null,
+  "endpoints": [
+    {
+      "name": "forecast",
+      "path": "/forecast",
+      "method": "GET",
+      "description": "Get weather forecast data for a location",
+      "required_params": [
+        "latitude",
+        "longitude"
+      ],
+      "optional_params": [
+        "hourly",
+        "daily",
+        "current",
+        "minutely_15",
+        "timezone",
+        "forecast_days",
+        "forecast_hours",
+        "forecast_minutely_15",
+        "past_days",
+        "past_hours",
+        "past_minutely_15",
+        "temperature_unit",
+        "windspeed_unit",
+        "precipitation_unit",
+        "timeformat",
+        "cell_selection"
+      ],
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "description": "WGS84 latitude of the location"
+          },
+          "longitude": {
+            "type": "number",
+            "description": "WGS84 longitude of the location"
+          },
+          "elevation": {
+            "type": "number",
+            "description": "Elevation of the location in meters"
+          },
+          "generationtime_ms": {
+            "type": "number",
+            "description": "Time taken to generate the forecast in milliseconds"
+          },
+          "utc_offset_seconds": {
+            "type": "integer",
+            "description": "UTC offset in seconds"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone identifier"
+          },
+          "timezone_abbreviation": {
+            "type": "string",
+            "description": "Timezone abbreviation"
+          },
+          "current": {
+            "type": "object",
+            "description": "Current weather conditions",
+            "properties": {
+              "time": {
+                "type": "string"
+              },
+              "interval": {
+                "type": "integer"
+              },
+              "temperature": {
+                "type": "number"
+              },
+              "relative_humidity": {
+                "type": "integer"
+              },
+              "apparent_temperature": {
+                "type": "number"
+              },
+              "precipitation": {
+                "type": "number"
+              },
+              "weather_code": {
+                "type": "integer"
+              },
+              "wind_speed": {
+                "type": "number"
+              },
+              "wind_direction": {
+                "type": "integer"
+              }
+            }
+          },
+          "hourly": {
+            "type": "object",
+            "description": "Hourly forecast data",
+            "properties": {
+              "time": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "temperature_2m": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "relative_humidity_2m": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "precipitation": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "weather_code": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "wind_speed_10m": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "daily": {
+            "type": "object",
+            "description": "Daily forecast data",
+            "properties": {
+              "time": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "temperature_2m_max": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "temperature_2m_min": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "precipitation_sum": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "weather_code": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "wind_speed_10m_max": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      },
+      "example_request": "GET /forecast?latitude=52.52&longitude=13.41&current=true&hourly=temperature_2m,precipitation",
+      "example_response": {
+        "latitude": 52.52,
+        "longitude": 13.41,
+        "generationtime_ms": 2.2119,
+        "utc_offset_seconds": 3600,
+        "timezone": "Europe/Berlin",
+        "current": {
+          "temperature": 15.3,
+          "weather_code": 0,
+          "wind_speed": 10.3
+        }
+      }
+    },
+    {
+      "name": "marine",
+      "path": "/marine",
+      "method": "GET",
+      "description": "Get marine/ocean forecast data (waves, swell)",
+      "required_params": [
+        "latitude",
+        "longitude"
+      ],
+      "optional_params": [
+        "hourly",
+        "daily",
+        "timezone",
+        "forecast_days",
+        "past_days"
+      ],
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "hourly": {
+            "type": "object",
+            "properties": {
+              "wave_height": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "wave_direction": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "wave_period": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "air_quality",
+      "path": "/air-quality",
+      "method": "GET",
+      "description": "Get air quality data",
+      "required_params": [
+        "latitude",
+        "longitude"
+      ],
+      "optional_params": [
+        "hourly",
+        "daily",
+        "timezone",
+        "forecast_days",
+        "past_days"
+      ],
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "hourly": {
+            "type": "object",
+            "properties": {
+              "pm10": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "pm2_5": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "ozone": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "nitrogen_dioxide": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "rate_limits": {
+    "per_second": null,
+    "per_minute": null,
+    "per_hour": null,
+    "notes": "Open-Meteo offers free tier with no strict rate limiting. Commercial use has fair-use policy. No API key required for free tier.",
+    "headers": []
+  },
+  "pagination": "none",
+  "error_codes": [
+    400,
+    401,
+    403,
+    404,
+    422,
+    429,
+    500,
+    503
+  ],
+  "error_response_format": {
+    "type": "object",
+    "properties": {
+      "error": {
+        "type": "boolean"
+      },
+      "reason": {
+        "type": "string"
+      },
+      "message": {
+        "type": "string"
+      }
+    }
+  },
+  "common_errors": [
+    {
+      "code": 400,
+      "reason": "Bad Request - Invalid parameters"
+    },
+    {
+      "code": 422,
+      "reason": "Unprocessable Entity - Missing or invalid required parameters"
+    },
+    {
+      "code": 429,
+      "reason": "Rate Limit Exceeded"
+    },
+    {
+      "code": 503,
+      "reason": "Service Unavailable"
+    }
+  ],
+  "notes": [
+    "No authentication required for free tier",
+    "Uses query parameters for all API options",
+    "Returns JSON responses only",
+    "Supports multiple weather variables and aggregation levels",
+    "Latitude and longitude are always required parameters",
+    "Temperature unit, windspeed unit, and precipitation unit can be customized",
+    "Timezone parameter accepts IANA timezone identifiers",
+    "API supports current, hourly, daily, and minutely data at different granularities",
+    "Response includes generation time in milliseconds",
+    "Large number of optional parameters for customizing forecast data",
+    "Free tier has no API key requirement but may have fair-use limits",
+    "Multiple endpoints available: /forecast (weather), /marine (ocean), /air-quality"
+  ],
+  "additional_endpoints": [
+    {
+      "name": "geocoding",
+      "path": "/geocoding",
+      "method": "GET",
+      "description": "Search for locations by name",
+      "required_params": [
+        "name"
+      ],
+      "optional_params": [
+        "count",
+        "language",
+        "format"
+      ]
+    },
+    {
+      "name": "reverse_geocoding",
+      "path": "/reverse",
+      "method": "GET",
+      "description": "Get location name from coordinates",
+      "required_params": [
+        "latitude",
+        "longitude"
+      ],
+      "optional_params": [
+        "language",
+        "format"
+      ]
+    }
+  ],
+  "http_methods": [
+    "GET"
+  ],
+  "response_format": "JSON",
+  "content_type": "application/json",
+  "confidence": 0.92
+}
+```
+
+**Driver Class Name:** OpenMeteoDriver
+
+**Requirements for this file:**
+
+- Complete working example
+- Include imports
+- Show how to initialize driver
+- Demonstrate the specific functionality
+- Add error handling
+- Make it runnable as standalone script
+
+
+**Previous Learnings:**
+- results
+
+Return ONLY the code for examples/list_objects.py. No JSON wrapper, no markdown code blocks.
+Start directly with the code (or markdown for README).
+
+
+
+================================================================================
+Timestamp: 2025-11-12T13:23:40.742522
+================================================================================
+Generate tests/test_client.py for Open-Meteo driver.
+
+**File Purpose:** Unit tests for the driver
+
+**Research Data:**
+```json
+{
+  "api_name": "Open-Meteo",
+  "api_type": "REST",
+  "base_url": "https://api.open-meteo.com/v1",
+  "requires_auth": false,
+  "auth_type": "none",
+  "auth_location": null,
+  "auth_key_name": null,
+  "endpoints": [
+    {
+      "name": "forecast",
+      "path": "/forecast",
+      "method": "GET",
+      "description": "Get weather forecast data for a location",
+      "required_params": [
+        "latitude",
+        "longitude"
+      ],
+      "optional_params": [
+        "hourly",
+        "daily",
+        "current",
+        "minutely_15",
+        "timezone",
+        "forecast_days",
+        "forecast_hours",
+        "forecast_minutely_15",
+        "past_days",
+        "past_hours",
+        "past_minutely_15",
+        "temperature_unit",
+        "windspeed_unit",
+        "precipitation_unit",
+        "timeformat",
+        "cell_selection"
+      ],
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "description": "WGS84 latitude of the location"
+          },
+          "longitude": {
+            "type": "number",
+            "description": "WGS84 longitude of the location"
+          },
+          "elevation": {
+            "type": "number",
+            "description": "Elevation of the location in meters"
+          },
+          "generationtime_ms": {
+            "type": "number",
+            "description": "Time taken to generate the forecast in milliseconds"
+          },
+          "utc_offset_seconds": {
+            "type": "integer",
+            "description": "UTC offset in seconds"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone identifier"
+          },
+          "timezone_abbreviation": {
+            "type": "string",
+            "description": "Timezone abbreviation"
+          },
+          "current": {
+            "type": "object",
+            "description": "Current weather conditions",
+            "properties": {
+              "time": {
+                "type": "string"
+              },
+              "interval": {
+                "type": "integer"
+              },
+              "temperature": {
+                "type": "number"
+              },
+              "relative_humidity": {
+                "type": "integer"
+              },
+              "apparent_temperature": {
+                "type": "number"
+              },
+              "precipitation": {
+                "type": "number"
+              },
+              "weather_code": {
+                "type": "integer"
+              },
+              "wind_speed": {
+                "type": "number"
+              },
+              "wind_direction": {
+                "type": "integer"
+              }
+            }
+          },
+          "hourly": {
+            "type": "object",
+            "description": "Hourly forecast data",
+            "properties": {
+              "time": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "temperature_2m": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "relative_humidity_2m": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "precipitation": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "weather_code": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "wind_speed_10m": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "daily": {
+            "type": "object",
+            "description": "Daily forecast data",
+            "properties": {
+              "time": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "temperature_2m_max": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "temperature_2m_min": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "precipitation_sum": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "weather_code": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "wind_speed_10m_max": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      },
+      "example_request": "GET /forecast?latitude=52.52&longitude=13.41&current=true&hourly=temperature_2m,precipitation",
+      "example_response": {
+        "latitude": 52.52,
+        "longitude": 13.41,
+        "generationtime_ms": 2.2119,
+        "utc_offset_seconds": 3600,
+        "timezone": "Europe/Berlin",
+        "current": {
+          "temperature": 15.3,
+          "weather_code": 0,
+          "wind_speed": 10.3
+        }
+      }
+    },
+    {
+      "name": "marine",
+      "path": "/marine",
+      "method": "GET",
+      "description": "Get marine/ocean forecast data (waves, swell)",
+      "required_params": [
+        "latitude",
+        "longitude"
+      ],
+      "optional_params": [
+        "hourly",
+        "daily",
+        "timezone",
+        "forecast_days",
+        "past_days"
+      ],
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "hourly": {
+            "type": "object",
+            "properties": {
+              "wave_height": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "wave_direction": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "wave_period": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "air_quality",
+      "path": "/air-quality",
+      "method": "GET",
+      "description": "Get air quality data",
+      "required_params": [
+        "latitude",
+        "longitude"
+      ],
+      "optional_params": [
+        "hourly",
+        "daily",
+        "timezone",
+        "forecast_days",
+        "past_days"
+      ],
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "hourly": {
+            "type": "object",
+            "properties": {
+              "pm10": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "pm2_5": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "ozone": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "nitrogen_dioxide": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "rate_limits": {
+    "per_second": null,
+    "per_minute": null,
+    "per_hour": null,
+    "notes": "Open-Meteo offers free tier with no strict rate limiting. Commercial use has fair-use policy. No API key required for free tier.",
+    "headers": []
+  },
+  "pagination": "none",
+  "error_codes": [
+    400,
+    401,
+    403,
+    404,
+    422,
+    429,
+    500,
+    503
+  ],
+  "error_response_format": {
+    "type": "object",
+    "properties": {
+      "error": {
+        "type": "boolean"
+      },
+      "reason": {
+        "type": "string"
+      },
+      "message": {
+        "type": "string"
+      }
+    }
+  },
+  "common_errors": [
+    {
+      "code": 400,
+      "reason": "Bad Request - Invalid parameters"
+    },
+    {
+      "code": 422,
+      "reason": "Unprocessable Entity - Missing or invalid required parameters"
+    },
+    {
+      "code": 429,
+      "reason": "Rate Limit Exceeded"
+    },
+    {
+      "code": 503,
+      "reason": "Service Unavailable"
+    }
+  ],
+  "notes": [
+    "No authentication required for free tier",
+    "Uses query parameters for all API options",
+    "Returns JSON responses only",
+    "Supports multiple weather variables and aggregation levels",
+    "Latitude and longitude are always required parameters",
+    "Temperature unit, windspeed unit, and precipitation unit can be customized",
+    "Timezone parameter accepts IANA timezone identifiers",
+    "API supports current, hourly, daily, and minutely data at different granularities",
+    "Response includes generation time in milliseconds",
+    "Large number of optional parameters for customizing forecast data",
+    "Free tier has no API key requirement but may have fair-use limits",
+    "Multiple endpoints available: /forecast (weather), /marine (ocean), /air-quality"
+  ],
+  "additional_endpoints": [
+    {
+      "name": "geocoding",
+      "path": "/geocoding",
+      "method": "GET",
+      "description": "Search for locations by name",
+      "required_params": [
+        "name"
+      ],
+      "optional_params": [
+        "count",
+        "language",
+        "format"
+      ]
+    },
+    {
+      "name": "reverse_geocoding",
+      "path": "/reverse",
+      "method": "GET",
+      "description": "Get location name from coordinates",
+      "required_params": [
+        "latitude",
+        "longitude"
+      ],
+      "optional_params": [
+        "language",
+        "format"
+      ]
+    }
+  ],
+  "http_methods": [
+    "GET"
+  ],
+  "response_format": "JSON",
+  "content_type": "application/json",
+  "confidence": 0.92
+}
+```
+
+**Driver Class Name:** OpenMeteoDriver
+
+**Requirements for this file:**
+
+- Use pytest framework
+- Test all core methods: __init__, list_objects, get_fields, query/read
+- Mock API responses with unittest.mock
+- Test error handling
+- Test connection validation
+- Include fixtures for setup/teardown
+
+
+**Previous Learnings:**
+- results
+
+Return ONLY the code for tests/test_client.py. No JSON wrapper, no markdown code blocks.
+Start directly with the code (or markdown for README).
+
+

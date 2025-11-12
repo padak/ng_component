@@ -1083,15 +1083,15 @@ print("JSON_RESULT_END")
 
         # Generate suggestions based on errors
         if tests_failed > 0:
-            if any('initialization' in str(e).lower() for e in errors):
+            if any('initialization' in str(err).lower() for err in errors):
                 suggestions.append("Check driver __init__ method and required parameters")
-            if any('list_objects' in str(e).lower() for e in errors):
+            if any('list_objects' in str(err).lower() for err in errors):
                 suggestions.append("Verify list_objects() implementation and API endpoint")
-            if any('get_fields' in str(e).lower() for e in errors):
+            if any('get_fields' in str(err).lower() for err in errors):
                 suggestions.append("Check get_fields() method and schema format")
-            if any('read' in str(e).lower() for e in errors):
+            if any('read' in str(err).lower() for err in errors):
                 suggestions.append("Verify read() method implementation and query handling")
-            if any('import' in str(e).lower() or 'module' in str(e).lower()):
+            if any('import' in str(err).lower() or 'module' in str(err).lower() for err in errors):
                 suggestions.append("Ensure all required dependencies are installed")
         else:
             suggestions.append("All tests passed! Driver is ready for use.")

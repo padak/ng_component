@@ -456,7 +456,7 @@ CLAUDE_TOOLS = [
                 },
                 "max_retries": {
                     "type": "integer",
-                    "description": "Maximum number of test-fix iterations (default: 3)"
+                    "description": "Maximum number of test-fix iterations (default: 7)"
                 }
             },
             "required": ["api_name", "api_url"]
@@ -664,7 +664,7 @@ class DriverCreatorSession:
                 api_name = tool_input['api_name']
                 api_url = tool_input['api_url']
                 output_dir = tool_input.get('output_dir')
-                max_retries = tool_input.get('max_retries', 3)
+                max_retries = tool_input.get('max_retries', 7)  # Increased from 3 - need more iterations for complex fixes
 
                 result = await loop.run_in_executor(
                     None,

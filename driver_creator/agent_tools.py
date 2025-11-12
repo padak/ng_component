@@ -8,10 +8,59 @@ This module provides sub-agent orchestration for driver generation:
 - Learning Agent: Extracts patterns and stores in mem0
 """
 
+import json
 import os
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from mem0 import Memory
+from datetime import datetime
+
+
+# Session logging directory
+CURRENT_SESSION_DIR = None
+
+def init_session_logging():
+    """Initialize logging directory for this driver generation session"""
+    global CURRENT_SESSION_DIR
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    CURRENT_SESSION_DIR = Path("logs") / f"session_{timestamp}"
+    CURRENT_SESSION_DIR.mkdir(parents=True, exist_ok=True)
+    print(f"\n📝 Session logs: {CURRENT_SESSION_DIR}\n")
+    return CURRENT_SESSION_DIR
+
+def log_agent_interaction(agent_type: str, phase: str, content: dict):
+    """
+    Log agent prompt/response for debugging.
+
+    Args:
+        agent_type: 'research', 'generator', 'tester', 'fixer', 'learning'
+        phase: 'input' or 'output'
+        content: {'prompt': str, 'response': str, 'metadata': dict}
+    """
+    if not CURRENT_SESSION_DIR:
+        return
+
+    log_file = CURRENT_SESSION_DIR / f"{agent_type}_{phase}.jsonl"
+
+    log_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "agent_type": agent_type,
+        "phase": phase,
+        **content
+    }
+
+    with open(log_file, "a") as f:
+        f.write(json.dumps(log_entry) + "\n")
+
+    # Also write human-readable version
+    if phase == 'input' and 'prompt' in content:
+        readable_file = CURRENT_SESSION_DIR / f"{agent_type}_prompt.txt"
+        with open(readable_file, "a") as f:
+            f.write(f"\n{'='*80}\n")
+            f.write(f"Timestamp: {log_entry['timestamp']}\n")
+            f.write(f"{'='*80}\n")
+            f.write(content['prompt'])
+            f.write(f"\n\n")
 
 # Model mappings (short name → full ID)
 MODEL_MAPPINGS = {
@@ -73,11 +122,44 @@ def get_memory_client() -> Memory:
     return Memory()  # Uses default config with OpenAI
 
 
+def prioritize_errors(errors: List[Dict]) -> List[Dict]:
+    """
+    Sort errors by priority (P0 = most critical).
+
+    Priority levels:
+    - P0: Import errors, syntax errors (block everything)
+    - P1: Type errors in core methods (list_objects, get_fields)
+    - P2: Test failures, runtime errors
+    - P3: Style issues, warnings
+    """
+    def get_priority(error):
+        error_str = str(error.get('error', '')).lower()
+        test_name = str(error.get('test', '')).lower()
+
+        # P0: Syntax and import errors
+        if any(keyword in error_str for keyword in ['syntaxerror', 'importerror', 'modulenotfounderror', 'indentationerror']):
+            return 0
+
+        # P1: Core method type errors
+        if 'list_objects' in test_name or 'get_fields' in test_name:
+            if 'expected str instance' in error_str or 'typeerror' in error_str:
+                return 1
+
+        # P2: Other test failures
+        if 'failed' in test_name or 'error' in error_str:
+            return 2
+
+        # P3: Everything else
+        return 3
+
+    return sorted(errors, key=get_priority)
+
+
 def generate_driver_with_agents(
     api_name: str,
     api_url: str,
     output_dir: Optional[str] = None,
-    max_retries: int = 3
+    max_retries: int = 7  # Increased from 3 - need more iterations for complex fixes
 ) -> Dict[str, Any]:
     """
     Generate a complete driver using specialized sub-agents.
@@ -114,6 +196,10 @@ def generate_driver_with_agents(
     from pathlib import Path
 
     start_time = time.time()
+
+    # Initialize session logging
+    session_dir = init_session_logging()
+
 
     # Initialize memory client
     memory = get_memory_client()
@@ -169,6 +255,15 @@ def generate_driver_with_agents(
     )
 
     try:
+
+        # Log Research Agent input
+        log_agent_interaction('research', 'input', {
+            'prompt': research_prompt,
+            'model': get_agent_model('research'),
+            'api_name': api_name,
+            'api_url': api_url
+        })
+
         # Use prompt caching for system prompt (saves 90% on repeated calls)
         research_response = claude.messages.create(
             model=get_agent_model('research'),  # Haiku for fast, cheap research
@@ -201,6 +296,14 @@ def generate_driver_with_agents(
             research_text = research_text.split("```")[1].split("```")[0].strip()
 
         research_data = json.loads(research_text)
+
+        # Log Research Agent output
+        log_agent_interaction('research', 'output', {
+            'response': research_text,
+            'research_data': research_data,
+            'endpoints_found': len(research_data.get('endpoints', []))
+        })
+
         print(f"   ✓ Research completed!")
         print(f"     - API Type: {research_data.get('api_type', 'Unknown')}")
         print(f"     - Auth Required: {research_data.get('requires_auth', 'Unknown')}")
@@ -301,6 +404,116 @@ def generate_driver_with_agents(
 - If public API (no auth required), make api_key optional with default None
 - Use requests.Session() for connection pooling
 - Clear error messages with custom exceptions
+
+**⚠️⚠️⚠️ CRITICAL REQUIREMENTS - READ THIS 3 TIMES BEFORE WRITING CODE ⚠️⚠️⚠️**
+
+**🚨 COMMON MISTAKE TO AVOID 🚨**
+DO NOT copy the research_data structure directly into list_objects()!
+If research_data contains List[Dict], you MUST extract ONLY the 'name' field!
+
+**⚠️ IF YOU RETURN List[Dict] FROM list_objects(), THE CODE WILL FAIL! ⚠️**
+
+**BEFORE YOU WRITE ANY CODE:**
+1. Read these requirements 3 times
+2. Understand that list_objects() MUST return List[str] (list of strings)
+3. If research_data has Dict objects, EXTRACT ONLY THE 'name' field
+4. Do NOT return the entire dictionary structure
+
+**Example: Extracting object names from research data**
+
+If research_data['endpoints'] looks like:
+```python
+[
+    {{"name": "forecast", "path": "/forecast", "method": "GET"}},
+    {{"name": "marine", "path": "/marine", "method": "GET"}},
+    {{"name": "air_quality", "path": "/air_quality", "method": "GET"}}
+]
+```
+
+Then list_objects() should be:
+```python
+def list_objects(self) -> List[str]:
+    \"\"\"Return list of available object names.\"\"\"
+    # ✅ CORRECT - Extract ONLY the names as strings:
+    return ['forecast', 'marine', 'air_quality']
+
+    # ❌ WRONG - Do NOT return the full dictionaries:
+    # return research_data['endpoints']  # This returns List[Dict]!
+
+    # ❌ WRONG - Do NOT return dict objects:
+    # return [{{"name": "forecast"}}, {{"name": "marine"}}]
+```
+
+**1. list_objects() signature (MUST FOLLOW EXACTLY):**
+   ```python
+   def list_objects(self) -> List[str]:
+       \"\"\"Return list of object names (strings only).
+
+       Returns:
+           List[str]: List of available object names
+
+       Example:
+           >>> driver.list_objects()
+           ['users', 'posts', 'comments']  # ✅ Strings only!
+       \"\"\"
+       # If API has no schema endpoint, hardcode known objects as STRINGS:
+       return ['object1', 'object2', 'object3']  # ✅ Simple strings!
+
+       # NEVER do this:
+       # return [{{'name': 'object1'}}]  # ❌ WRONG - Dict objects!
+   ```
+
+**2. get_fields(object_name: str) signature:**
+   ```python
+   def get_fields(self, object_name: str) -> Dict[str, Any]:
+       \"\"\"Return field schema for object.
+
+       Args:
+           object_name: Name of the object
+
+       Returns:
+           Dict[str, Any]: Field definitions with metadata
+       \"\"\"
+       return {{
+           "field_name": {{
+               "type": "string",
+               "required": True,
+               "nullable": False
+           }}
+       }}
+   ```
+
+**3. If API doesn't provide metadata:**
+   - list_objects(): Return hardcoded list of endpoint names as STRINGS ONLY
+   - get_fields(): Return empty dict {{}} or infer from sample data
+   - Document this limitation in docstrings
+
+**4. Extracting endpoint names from research_data:**
+   ```python
+   # research_data['endpoints'] is now simplified: [{{'name': 'forecast', 'path': '/forecast', 'method': 'GET'}}]
+   # Extract just the names using list comprehension:
+   endpoint_names = [ep['name'] for ep in research_data.get('endpoints', [])]
+   # Returns: ['forecast', 'marine', 'air_quality']  # ✅ CORRECT - strings only!
+   ```
+
+**VALIDATION CHECKLIST (self-check before returning code):**
+- [ ] Did you write `return [...]` with STRINGS ONLY in list_objects()?
+- [ ] NOT `return [{...}]` with dicts in list_objects()?
+- [ ] If research_data has dicts, did you EXTRACT only the 'name' field?
+- [ ] list_objects() returns List[str] (NOT List[Dict], NOT Dict, NOT anything else)
+- [ ] get_fields() returns Dict[str, Any]
+- [ ] No import errors (all imports are valid)
+- [ ] Proper indentation (no mixed tabs/spaces)
+
+**FINAL CHECK BEFORE RETURNING:**
+Open the code you generated and verify:
+1. Find the list_objects() method
+2. Look at the return statement
+3. Confirm it returns a simple list like: ['name1', 'name2', 'name3']
+4. NOT a list of dicts like: [{{'name': 'name1'}}, ...]
+5. If you see {{}} braces in the return, YOU DID IT WRONG!
+
+**If unsure, read CRITICAL REQUIREMENTS again from the top!**
 """.format(class_name=class_name)
 
             elif file_path == "__init__.py":
@@ -308,6 +521,20 @@ def generate_driver_with_agents(
 - Export {class_name}Driver
 - Export all custom exceptions
 - Set __version__ = "1.0.0"
+
+**⚠️ CRITICAL:**
+- Import from .client (NOT .driver)
+- Proper indentation (4 spaces, no tabs)
+- No trailing commas in single-item imports
+
+Example:
+```python
+from .client import {class_name}Driver
+from .exceptions import (
+    DriverError,
+    AuthenticationError
+)
+```
 """
 
             elif file_path == "exceptions.py":
@@ -358,6 +585,14 @@ Start directly with the code (or markdown for README).
 """
 
             try:
+
+                # Log Generator Agent input
+                log_agent_interaction('generator', 'input', {
+                    'prompt': file_prompt,
+                    'file_path': file_path,
+                    'model': get_agent_model('generator')
+                })
+
                 # Use prompt caching - cache research_data and base instructions
                 # This saves 90% on cost for files 2-6 (same research data)
                 file_response = claude.messages.create(
@@ -395,6 +630,14 @@ Start directly with the code (or markdown for README).
                         lines = lines[:-1]
                     file_content = '\n'.join(lines).strip()
 
+
+                # Log Generator Agent output
+                log_agent_interaction('generator', 'output', {
+                    'file_path': file_path,
+                    'code_length': len(file_content),
+                    'response': file_content[:500]  # First 500 chars
+                })
+
                 files_dict[file_path] = file_content
                 print(f"       ✓ {file_path} ({len(file_content)} chars)")
 
@@ -427,6 +670,52 @@ Start directly with the code (or markdown for README).
             "research_data": research_data,
             "execution_time": time.time() - start_time
         }
+
+    # Step 3.5: Validate generated code BEFORE testing
+    print(f"\n🔍 Step 3.5: Validating generated code...")
+
+    validation_errors = []
+
+    # Check client.py exists
+    client_py_path = output_dir / "client.py"
+    if client_py_path.exists():
+        client_code = client_py_path.read_text()
+
+        # Check 1: list_objects() returns List[str], not List[Dict]
+        if 'def list_objects(self) -> List[str]:' in client_code:
+            # Look for the return statement in list_objects
+            import re
+            # Find list_objects function
+            match = re.search(r'def list_objects\(self\).*?(?=\n    def |\nclass |\Z)', client_code, re.DOTALL)
+            if match:
+                func_body = match.group(0)
+                # Check for Dict return patterns
+                if re.search(r"return \[{['\"]name['\"]:", func_body):
+                    validation_errors.append({
+                        "file": "client.py",
+                        "issue": "list_objects() returns List[Dict] instead of List[str]",
+                        "fix": "Extract only 'name' fields from dicts, e.g., return [obj['name'] for obj in objects]"
+                    })
+                    print(f"   ⚠️  VALIDATION ERROR: list_objects() returns Dict instead of str!")
+
+        # Check 2: No obvious syntax errors
+        try:
+            compile(client_code, 'client.py', 'exec')
+            print(f"   ✓ client.py syntax is valid")
+        except SyntaxError as e:
+            validation_errors.append({
+                "file": "client.py",
+                "issue": f"Syntax error: {e}",
+                "fix": "Fix syntax error before testing"
+            })
+            print(f"   ⚠️  VALIDATION ERROR: Syntax error in client.py!")
+
+    if validation_errors:
+        print(f"\n⚠️  Found {len(validation_errors)} validation error(s) BEFORE testing")
+        print(f"   These would cause test failures. Consider fixing before E2B tests.")
+        # Don't block - still run tests, but warn user
+    else:
+        print(f"   ✓ Pre-test validation passed!")
 
     # Step 4: Launch Tester Agent (with retry loop)
     print(f"\n🧪 Step 4: Launching Tester Agent (max {max_retries} iterations)...")
@@ -476,6 +765,15 @@ Start directly with the code (or markdown for README).
                             print(f"   ⚠ No specific errors to fix - stopping here")
                             break
 
+                        # Prioritize errors (fix critical ones first)
+                        errors = prioritize_errors(errors)
+                        print(f"   📋 Prioritized {len(errors)} error(s) (P0=critical → P3=minor)")
+                        for i, err in enumerate(errors[:3], 1):  # Show top 3
+                            priority = ['P0 🔴', 'P1 🟡', 'P2 🟢', 'P3 ⚪'][min(3, i-1)]
+                            error_display = err.get('error', str(err))[:60] if isinstance(err, dict) else str(err)[:60]
+                            test_name = err.get('test', 'unknown') if isinstance(err, dict) else 'unknown'
+                            print(f"      {priority} {test_name}: {error_display}...")
+
                         print(f"   📋 Analyzing {len(errors)} error(s)...")
 
                         # Create fix prompt for Tester Agent
@@ -491,10 +789,39 @@ Start directly with the code (or markdown for README).
                                 error_lines.append(f"- {err}")
                         error_summary = "\n".join(error_lines)
 
+                        # Read ALL files being tested to show Tester Agent current state
+                        current_files_content = {}
+                        # We need to identify which files have edits
+                        # For now, read common files that are usually edited
+                        common_files_to_check = ["client.py", "__init__.py", "exceptions.py", "tests/test_client.py"]
+
+                        for file_to_check in common_files_to_check:
+                            check_path = output_dir / file_to_check
+                            if check_path.exists():
+                                try:
+                                    with open(check_path, 'r', encoding='utf-8') as f:
+                                        current_files_content[file_to_check] = f.read()
+                                except Exception as e:
+                                    print(f"   ⚠ Could not read {file_to_check}: {e}")
+
+                        # Build current code section for prompt
+                        current_code_section = ""
+                        for file_name, file_content in current_files_content.items():
+                            current_code_section += f"""
+**Current {file_name}:**
+```python
+{file_content}
+```
+
+"""
+
                         fix_prompt = f"""You are a Tester & Debugger Agent. Analyze test failures and suggest EXACT code edits.
 
 **Driver:** {api_name}
 **Test Results:** {tests_passed} passed, {tests_failed} failed
+
+**CURRENT CODE (what's in the files NOW):**
+{current_code_section}
 
 **Errors:**
 {error_summary}
@@ -503,10 +830,10 @@ Start directly with the code (or markdown for README).
 {test_results.get('output', 'N/A')[:2000]}
 
 **Your Task:**
-1. Identify the root cause of each error
-2. Provide EXACT code strings for Edit tool (old_string → new_string)
-3. old_string must match EXACTLY what's in the file (including indentation!)
-4. Return JSON with precise edits
+1. READ the current code above carefully
+2. FIND the exact lines causing the errors
+3. Provide old_string that EXACTLY matches what's in the file (including indentation!)
+4. Provide new_string with the fix
 
 **Common Issues:**
 - `list_objects()` should return `List[str]` (e.g., `["users", "posts"]`), NOT `List[Dict]`
@@ -530,14 +857,22 @@ Return JSON:
 }}
 ```
 
-**CRITICAL:**
-- old_string must match the EXACT code in the file (with correct indentation!)
-- Include enough context to make old_string unique
-- If unsure about exact code, include surrounding lines for context
+**CRITICAL for old_string:**
+- Copy EXACT text from current code above (with correct whitespace)
+- Include enough context to make it unique
+- Match indentation precisely (count spaces!)
 """
 
                         try:
                             print(f"   🤖 Asking Tester Agent for fix suggestions...")
+
+
+                            # Log Tester Agent input
+                            log_agent_interaction('tester', 'input', {
+                                'prompt': fix_prompt,
+                                'errors': errors,
+                                'iteration': iteration
+                            })
 
                             # Use prompt caching for error analysis
                             fix_response = claude.messages.create(
@@ -571,6 +906,14 @@ Return JSON:
                                 fix_text = fix_text.split("```")[1].split("```")[0].strip()
 
                             fix_data = json.loads(fix_text)
+
+                            # Log Tester Agent output
+                            log_agent_interaction('tester', 'output', {
+                                'analysis': fix_data.get('analysis'),
+                                'edits_suggested': len(fix_data.get('edits', [])),
+                                'response': fix_text
+                            })
+
 
                             print(f"   📝 Analysis: {fix_data.get('analysis', 'N/A')[:100]}...")
 
@@ -655,6 +998,14 @@ Return JSON:
 """
 
                                         try:
+
+                                            # Log Code Locator input
+                                            log_agent_interaction('fixer', 'input', {
+                                                'prompt': locate_prompt,
+                                                'issue': issue,
+                                                'file': file_to_fix
+                                            })
+
                                             locate_response = claude.messages.create(
                                                 model=get_agent_model('fixer'),  # Haiku for fast code location
                                                 max_tokens=2000,
@@ -671,6 +1022,15 @@ Return JSON:
                                             locate_data = json.loads(locate_text)
                                             old_string = locate_data['old_string']
                                             new_string = locate_data['new_string']
+
+                                            # Log Code Locator output
+                                            log_agent_interaction('fixer', 'output', {
+                                                'old_string_length': len(old_string),
+                                                'new_string_length': len(new_string),
+                                                'found': old_string in modified_content
+                                            })
+
+
 
                                             if old_string not in modified_content:
                                                 print(f"       ✗ Still not found - skipping edit {i}")
@@ -917,6 +1277,12 @@ Your mission: Deeply understand the target API to enable perfect driver generati
 **Output Format:**
 
 Return structured JSON:
+
+**CRITICAL: For endpoints array, provide MINIMAL structure:**
+- Each endpoint should have ONLY: name (string), path (string), method (string)
+- Do NOT include full schema, parameters, description, or response details in endpoints array
+- Put detailed info in separate 'endpoint_details' field if needed for documentation
+
 ```json
 {{
     "api_name": "...",
@@ -928,15 +1294,30 @@ Return structured JSON:
     "auth_key_name": "api_key|authorization|...",
     "endpoints": [
         {{
-            "name": "get_forecast",
+            "name": "forecast",
             "path": "/forecast",
-            "method": "GET",
+            "method": "GET"
+        }},
+        {{
+            "name": "marine",
+            "path": "/marine",
+            "method": "GET"
+        }}
+    ],
+    "endpoint_details": {{
+        "forecast": {{
             "description": "Get weather forecast",
             "required_params": ["latitude", "longitude"],
             "optional_params": ["hourly", "daily"],
             "response_schema": {{...}}
+        }},
+        "marine": {{
+            "description": "Get marine weather data",
+            "required_params": ["latitude", "longitude"],
+            "optional_params": ["hourly", "daily"],
+            "response_schema": {{...}}
         }}
-    ],
+    }},
     "rate_limits": {{
         "per_second": 10,
         "per_minute": 100,
