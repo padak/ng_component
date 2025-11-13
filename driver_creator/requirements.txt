@@ -1,12 +1,18 @@
 # Driver Creator Agent - Requirements
 
+# Claude Agent SDK - NEW REAL SOLUTION!
+claude-agent-sdk>=0.1.6
+
 # Web Framework
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
 python-multipart==0.0.9
 
-# Anthropic SDK (Official)
+# Anthropic SDK (Official) - for fallback
 anthropic>=0.40.0
+
+# Async HTTP for agent tools
+aiohttp>=3.9.0
 
 # WebSocket support
 websockets==13.1
