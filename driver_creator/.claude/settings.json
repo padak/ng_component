@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "on_file_created": "echo 'File created: {file}'",
+    "on_test_failed": "echo 'Test failed, investigating...'",
+    "on_test_passed": "echo 'Test passed!'"
+  },
+  "model": "claude-sonnet-4-5-20250929",
+  "prompt_caching": true,
+  "max_retries": 3,
+  "timeout": 300
+}
